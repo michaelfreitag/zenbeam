@@ -1,9 +1,7 @@
-java_snippet_2014-08-02
+Generate Boilerplate Classes via Annotation Processing at Compile Time
 =======================
 
 http://yegeniy.github.io/java_snippets.html#2014-08-02
-
-##### Generate Boilerplate Classes via Annotation Processing at Compile Time
 
 We will use an annotation and an accompanying annotation processor, to generate
 Java classes from a Mustache template at compile time. Useful for
