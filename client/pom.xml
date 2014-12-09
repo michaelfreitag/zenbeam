@@ -29,13 +29,13 @@
 
    <dependencies>
       <dependency>
-         <groupId>com.example</groupId>
+         <groupId>org.zenbeam</groupId>
          <artifactId>annotations</artifactId>
          <version>1.0.0</version>
          <scope>compile</scope>
       </dependency>
       <dependency>
-         <groupId>com.example</groupId>
+         <groupId>org.zenbeam</groupId>
          <artifactId>processors</artifactId>
          <version>1.0.0</version>
          <scope>compile</scope>
