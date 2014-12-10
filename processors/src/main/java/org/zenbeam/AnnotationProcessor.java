@@ -23,6 +23,10 @@ import java.util.*;
 @SupportedSourceVersion(SourceVersion.RELEASE_7)
 public class AnnotationProcessor extends AbstractProcessor {
 
+    private enum MethodType {
+        GET, SET
+    }
+
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
@@ -57,7 +61,7 @@ public class AnnotationProcessor extends AbstractProcessor {
 
                             //method name
                             Map<String, Object> methodContext = new HashMap<String, Object>();
-                            methodContext.put("methodName", ee.getSimpleName().toString());
+                            methodContext.put("name", ee.getSimpleName().toString());
 
                             //method attributes
                             List<String> methodAttributes = new ArrayList<String>();
@@ -80,12 +84,14 @@ public class AnnotationProcessor extends AbstractProcessor {
 
                             }
 
-
-                            methodContext.put("methodSignature", StringUtils.join(methodAttributes, ", "));
-                            methodContext.put("methodBody", buildProjections(projections, source, target));
+                            methodContext.put("visibility", ee.getReturnType().toString());
+                            methodContext.put("returnType", ee.getReturnType().toString());
+                            methodContext.put("signature", StringUtils.join(methodAttributes, ", "));
+                            methodContext.put("body", buildProjections(projections, source, target));
 
                             final String method = Mustache.compiler().compile(getTemplate("templates/method.mustache")).execute(methodContext);
-                            System.err.println(method);
+
+                            context.put("methods", method);
 
                         }
 
@@ -122,22 +128,47 @@ public class AnnotationProcessor extends AbstractProcessor {
         return result;
     }
 
-    private Map<String, String> getGetterSetterInfo(VariableElement element) {
+    private VariableElement findField(String name, VariableElement element) {
 
-        Map<String, String> result = new HashMap<String, String>();
+        VariableElement result = null;
         List<Element> elements = new ArrayList<Element>();
         elements.add(processingEnv.getTypeUtils().asElement(element.asType()));
 
         for (TypeMirror tm : processingEnv.getTypeUtils().directSupertypes(element.asType())) {
-           elements.add(processingEnv.getTypeUtils().asElement(tm));
-
+            elements.add(processingEnv.getTypeUtils().asElement(tm));
         }
 
         for (Element e : elements) {
-            for (Element method : ElementFilter.methodsIn(e.getEnclosedElements())) {
-                String keyName = method.getSimpleName().toString().toLowerCase();
-                String originalName = method.getSimpleName().toString();
-                result.put(keyName, originalName);
+            for (VariableElement ve : ElementFilter.fieldsIn(e.getEnclosedElements())) {
+
+                if (ve.getSimpleName().toString().equalsIgnoreCase(name)) {
+                    result = ve;
+                }
+
+            }
+        }
+
+        return result;
+    }
+
+    private ExecutableElement findMethod(String methodName, VariableElement element) {
+
+        ExecutableElement result = null;
+
+        List<Element> elements = new ArrayList<Element>();
+        elements.add(processingEnv.getTypeUtils().asElement(element.asType()));
+
+        for (TypeMirror tm : processingEnv.getTypeUtils().directSupertypes(element.asType())) {
+            elements.add(processingEnv.getTypeUtils().asElement(tm));
+        }
+
+        for (Element e : elements) {
+            for (ExecutableElement method : ElementFilter.methodsIn(e.getEnclosedElements())) {
+
+                if (methodName.equalsIgnoreCase(method.getSimpleName().toString().toLowerCase())) {
+                    result = method;
+                }
+
             }
         }
 
@@ -145,42 +176,130 @@ public class AnnotationProcessor extends AbstractProcessor {
     }
 
 
+    private MethodInfo getMethodInfo(String property, VariableElement element, MethodType methodType) {
+
+        MethodInfo result = new MethodInfo();
+        result.setFieldName(element.getSimpleName().toString());
+
+        if (property != null && !property.isEmpty()) {
+
+            if (property.contains(".")) {
+                //get first property element
+                result.setChild(getMethodInfo(property.substring(property.indexOf(".") + 1, property.length())
+                        , findField(property.substring(0, property.indexOf(".")), element), methodType));
+
+                property = property.substring(0, property.indexOf("."));
+
+            }
+
+            ExecutableElement method = findMethod(methodType.name() + property, element);
+
+            if (method != null) {
+
+                result.setName(method.getSimpleName().toString());
+
+                if (methodType == MethodType.SET) {
+                    if (method.getParameters() != null && method.getParameters().size() > 0) {
+                        //it is a setter, save parameter type as type
+                        for (VariableElement va : method.getParameters()) {
+                            result.setType(va.asType());
+                        }
+                    }
+                }
+
+                if (methodType == MethodType.GET) {
+                    //it is a get, save return type as type
+                    result.setType(method.getReturnType());
+                }
+            }
+
+        }
+
+        return result;
+    }
+
+    private String buildNullSaveCondition(MethodInfo methodInfo) {
+
+
+        StringBuffer nullSaveCondition = new StringBuffer();
+
+        if (methodInfo.getChild() != null) {
+
+            if (!nullSaveCondition.toString().isEmpty()) {
+                nullSaveCondition.append(" &&");
+            }
+            nullSaveCondition.append(buildNullSaveCondition(methodInfo.getChild()));
+            nullSaveCondition.append(methodInfo.getFieldName()).append(".").append(methodInfo.getName()).append("() != null");
+
+        }
+
+        return nullSaveCondition.toString();
+    }
+
+    private String buildGetter(MethodInfo methodInfo) {
+
+        StringBuffer getter = new StringBuffer();
+
+        getter.append(methodInfo.getName()).append("()");
+
+
+        if (methodInfo.getChild() != null) {
+
+            if (!getter.toString().isEmpty()) {
+                getter.append(".");
+            }
+            getter.append(buildGetter(methodInfo.getChild()));
+        }
+
+
+
+        return getter.toString();
+    }
+
+
     private String buildProjections(Projections projections, VariableElement source, VariableElement target) {
 
         //collection meta information getter/setter
-        Map<String, String> targetSetter = getGetterSetterInfo(target);
-        Map<String, String> sourceGetter = getGetterSetterInfo(source);
 
         StringBuffer sb = new StringBuffer();
 
         for (Projection p : projections.value()) {
 
-            Map<String, String> templateModelSourceGet = new HashMap<String, String>();
-            templateModelSourceGet.put("getterName", sourceGetter.get("get" + p.source().toLowerCase()));
-            final String sourceGetProperty = Mustache.compiler().compile(getTemplate("templates/source_get.mustache")).execute(templateModelSourceGet);
+            MethodInfo getter = getMethodInfo(p.source().toLowerCase(), source, MethodType.GET);
+            String nullSaveCondition =  buildNullSaveCondition(getter);
+            String getterCommand = source.getSimpleName() + "." + buildGetter(getter);
 
-            Map<String, String> templateModelTargetSet = new HashMap<String, String>();
-            templateModelTargetSet.put("setterName", targetSetter.get("set" + p.target().toLowerCase()));
-            templateModelTargetSet.put("getProperty", sourceGetProperty);
+            MethodInfo setter = getMethodInfo(p.target().toLowerCase(), target, MethodType.SET);
 
-            final String method = Mustache.compiler().compile(getTemplate("templates/target_set.mustache")).execute(templateModelTargetSet);
-            sb.append(method).append(";").append("\r\n");
+            //check if getter can be applied
+            if (!processingEnv.getTypeUtils().isAssignable(getter.getType(), setter.getType())) {
 
-        }
-
-
-
-        /*
-        Element parameterElement = processingEnv.getTypeUtils().asElement(source.asType());
-
-        for (Element elem : ElementFilter.methodsIn(parameterElement.getEnclosedElements())) {
-            ElementKind elementKind = element.getKind();
-            System.err.println(elem);
-            if (elementKind.equals(ElementKind.FIELD)) {
+                if (setter.getType().toString().equalsIgnoreCase(String.class.getCanonicalName())) {
+                    getterCommand += ".toString()";
+                }
 
             }
+
+            Map<String, String> templateModelTargetSet = new HashMap<String, String>();
+            templateModelTargetSet.put("setterName", setter.getName());
+            templateModelTargetSet.put("getProperty", getterCommand);
+
+            final String setCommand = Mustache.compiler().compile(getTemplate("templates/set.mustache")).execute(templateModelTargetSet);
+
+            //build getter/setter block surrounded by null safe condition
+            Map<String, String> commandModel = new HashMap<String, String>();
+            if (nullSaveCondition != null && !nullSaveCondition.isEmpty()) {
+                commandModel.put("condition", nullSaveCondition);
+            }
+            commandModel.put("body", setCommand);
+
+            final String command = Mustache.compiler().compile(getTemplate("templates/if.mustache")).execute(commandModel);
+
+
+
+            sb.append(command).append("\r\n");
+
         }
-        */
 
         return sb.toString();
     }

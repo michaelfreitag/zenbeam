@@ -12,7 +12,10 @@ public interface Mapper {
 
      @Projections({
          @Projection(source = "id", target = "exampleAId"),
-         @Projection(source = "name", target = "exampleAName")
+         @Projection(source = "name", target = "exampleAName"),
+         @Projection(source = "exampleB.name", target = "exampleBName"),
+         @Projection(source = "exampleB.id", target = "exampleBId"),
+         @Projection(source = "exampleA.id", target = "exampleA.id")
      })
      public void fromExampleAToExampleDto(ExampleA source, ExampleDto target);
 
