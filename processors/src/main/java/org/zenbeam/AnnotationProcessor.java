@@ -11,8 +11,8 @@ import javax.lang.model.SourceVersion;
 import javax.lang.model.element.*;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.ElementFilter;
+import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
-import java.io.IOException;
 import java.net.URL;
 import java.nio.charset.Charset;
 import java.nio.file.Files;
@@ -106,7 +106,7 @@ public class AnnotationProcessor extends AbstractProcessor {
 
                 }
             return true;
-        } catch (IOException e) {
+        } catch (Exception e) {
             System.err.println(e);
             return true;
         }
@@ -128,10 +128,15 @@ public class AnnotationProcessor extends AbstractProcessor {
         return result;
     }
 
+    private void printError(String msg) {
+        processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, msg);
+    }
+
     private VariableElement findField(String name, VariableElement element) {
 
         VariableElement result = null;
         List<Element> elements = new ArrayList<Element>();
+
         elements.add(processingEnv.getTypeUtils().asElement(element.asType()));
 
         for (TypeMirror tm : processingEnv.getTypeUtils().directSupertypes(element.asType())) {
@@ -148,19 +153,35 @@ public class AnnotationProcessor extends AbstractProcessor {
             }
         }
 
+         if (result == null) {
+             printError(String.format("Field [%s] not found in [%]", name, element.getSimpleName()));
+         }
+
         return result;
     }
 
-    private ExecutableElement findMethod(String methodName, VariableElement element) {
+    private ExecutableElement findMethod(VariableElement owner, VariableElement field, MethodType methodType) {
 
         ExecutableElement result = null;
 
         List<Element> elements = new ArrayList<Element>();
-        elements.add(processingEnv.getTypeUtils().asElement(element.asType()));
+        elements.add(processingEnv.getTypeUtils().asElement(owner.asType()));
 
-        for (TypeMirror tm : processingEnv.getTypeUtils().directSupertypes(element.asType())) {
+        for (TypeMirror tm : processingEnv.getTypeUtils().directSupertypes(owner.asType())) {
             elements.add(processingEnv.getTypeUtils().asElement(tm));
         }
+
+
+        String methodName = field.getSimpleName().toString();
+
+        if (methodType == MethodType.GET) {
+            methodName = "get" + methodName;
+        }
+
+        if (methodType == MethodType.SET) {
+            methodName = "set" + methodName;
+        }
+
 
         for (Element e : elements) {
             for (ExecutableElement method : ElementFilter.methodsIn(e.getEnclosedElements())) {
@@ -172,90 +193,173 @@ public class AnnotationProcessor extends AbstractProcessor {
             }
         }
 
+        if (result == null) {
+            printError(String.format("No Method [%s] found in [%]", methodName, field.getSimpleName()));
+        }
+
+
         return result;
     }
 
 
-    private MethodInfo getMethodInfo(String property, VariableElement element, MethodType methodType) {
+    private FieldInfo getFieldInfo(String property, VariableElement element, FieldInfo parent) {
 
-        MethodInfo result = new MethodInfo();
-        result.setFieldName(element.getSimpleName().toString());
+        FieldInfo result = new FieldInfo();
+        result.setParent(parent);
+        result.setOwner(element);
 
         if (property != null && !property.isEmpty()) {
 
             if (property.contains(".")) {
-                //get first property element
-                result.setChild(getMethodInfo(property.substring(property.indexOf(".") + 1, property.length())
-                        , findField(property.substring(0, property.indexOf(".")), element), methodType));
 
+                //get first property element
+                result.setChild(getFieldInfo(property.substring(property.indexOf(".") + 1, property.length())
+                        , findField(property.substring(0, property.indexOf(".")), element), result));
+
+                //cut property name
                 property = property.substring(0, property.indexOf("."));
 
             }
 
-            ExecutableElement method = findMethod(methodType.name() + property, element);
-
-            if (method != null) {
-
-                result.setName(method.getSimpleName().toString());
-
-                if (methodType == MethodType.SET) {
-                    if (method.getParameters() != null && method.getParameters().size() > 0) {
-                        //it is a setter, save parameter type as type
-                        for (VariableElement va : method.getParameters()) {
-                            result.setType(va.asType());
-                        }
-                    }
-                }
-
-                if (methodType == MethodType.GET) {
-                    //it is a get, save return type as type
-                    result.setType(method.getReturnType());
-                }
-            }
+            result.setField(findField(property, element));
 
         }
 
         return result;
     }
 
-    private String buildNullSaveCondition(MethodInfo methodInfo) {
-
-
-        StringBuffer nullSaveCondition = new StringBuffer();
-
-        if (methodInfo.getChild() != null) {
-
-            if (!nullSaveCondition.toString().isEmpty()) {
-                nullSaveCondition.append(" &&");
-            }
-            nullSaveCondition.append(buildNullSaveCondition(methodInfo.getChild()));
-            nullSaveCondition.append(methodInfo.getFieldName()).append(".").append(methodInfo.getName()).append("() != null");
-
+    private String getRootFieldName(FieldInfo fieldInfo) {
+        if (fieldInfo.getParent() != null) {
+            return getRootFieldName(fieldInfo.getParent());
         }
 
-        return nullSaveCondition.toString();
+        return fieldInfo.getOwner().getSimpleName().toString();
     }
 
-    private String buildGetter(MethodInfo methodInfo) {
+    private String buildNullSaveCondition(FieldInfo fieldInfo) {
+
+        if (fieldInfo.getChild() != null) {
+            return buildNullSaveCondition(fieldInfo.getChild());
+        } else {
+            StringBuffer nullSaveCondition = new StringBuffer();
+            nullSaveCondition.append(getRootFieldName(fieldInfo)).append(".").append(buildFullGetter(fieldInfo)).append(" != null");
+            return nullSaveCondition.toString();
+        }
+
+    }
+
+    private String buildGetter(FieldInfo fieldInfo) {
 
         StringBuffer getter = new StringBuffer();
 
-        getter.append(methodInfo.getName()).append("()");
-
-
-        if (methodInfo.getChild() != null) {
-
-            if (!getter.toString().isEmpty()) {
-                getter.append(".");
-            }
-            getter.append(buildGetter(methodInfo.getChild()));
-        }
-
-
+        ExecutableElement method = findMethod(fieldInfo.getOwner(), fieldInfo.getField(), MethodType.GET);
+        getter.append(method.getSimpleName()).append("()");
 
         return getter.toString();
     }
 
+
+
+    private String buildFullGetter(FieldInfo fieldInfo) {
+
+        StringBuffer getter = new StringBuffer();
+
+        if (fieldInfo.getParent() != null) {
+            getter.append(buildFullGetter(fieldInfo.getParent().cloneWithoutChild())).append(".");
+        }
+
+        ExecutableElement method = findMethod(fieldInfo.getOwner(), fieldInfo.getField(), MethodType.GET);
+        getter.append(method.getSimpleName()).append("()");
+
+
+        if (fieldInfo.getChild() != null) {
+
+            if (!getter.toString().isEmpty()) {
+                getter.append(".");
+            }
+            getter.append(buildFullGetter(fieldInfo.getChild()));
+        }
+
+        return getter.toString();
+    }
+
+    private String buildInstanciation(FieldInfo fieldInfo) {
+
+        StringBuffer result = new StringBuffer();
+        result.append("new ").append(fieldInfo.getField().asType().toString()).append("()");
+        return result.toString();
+
+    }
+
+    private String buildSetter(FieldInfo fieldInfo, String command) {
+
+        StringBuffer result = new StringBuffer();
+        ExecutableElement method = findMethod(fieldInfo.getOwner(), fieldInfo.getField(), MethodType.SET);
+
+
+        result.append(getRootFieldName(fieldInfo)).append(".");
+
+        if (fieldInfo.getParent() != null) {
+            result.append(buildFullGetter(fieldInfo.getParent().cloneWithoutChild())).append(".");
+        }
+
+        result.append(method.getSimpleName())
+                .append("(")
+                .append(command)
+                .append(");");
+
+        return result.toString();
+
+    }
+
+
+    private String renderIfCondition(String condition, String body) {
+
+        Map<String, String> commandModel = new HashMap<String, String>();
+        if (condition != null && !condition.isEmpty()) {
+            commandModel.put("condition", condition);
+        }
+        commandModel.put("body", body);
+
+        return Mustache.compiler().compile(getTemplate("templates/if.mustache")).execute(commandModel);
+
+    }
+
+    private String buildSetterPreparation(FieldInfo fieldInfo) {
+
+        StringBuffer command = new StringBuffer();
+
+        String setter = "";
+        String nullSaveCondition = "";
+
+        if (fieldInfo.getChild() != null) {
+
+            //null save prepare
+            FieldInfo fieldInfoWithOutChild = new FieldInfo();
+            fieldInfoWithOutChild.setOwner(fieldInfo.getOwner());
+            fieldInfoWithOutChild.setField(fieldInfo.getField());
+            nullSaveCondition = buildNullSaveCondition(fieldInfoWithOutChild);
+            setter = buildSetter(fieldInfoWithOutChild, buildInstanciation(fieldInfoWithOutChild));
+
+            final String ifCommand = renderIfCondition(nullSaveCondition, setter);
+            command.append(ifCommand).append("\r\n");
+
+            final String childCommands = buildSetterPreparation(fieldInfo.getChild());
+            command.append(childCommands).append("\r\n");
+
+        } else {
+
+            nullSaveCondition = buildNullSaveCondition(fieldInfo);
+            setter = buildSetter(fieldInfo, buildInstanciation(fieldInfo));
+
+            command.append(renderIfCondition(nullSaveCondition, setter)).append("\r\n");
+
+        }
+
+
+
+        return command.toString();
+    }
 
     private String buildProjections(Projections projections, VariableElement source, VariableElement target) {
 
@@ -265,14 +369,17 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         for (Projection p : projections.value()) {
 
-            MethodInfo getter = getMethodInfo(p.source().toLowerCase(), source, MethodType.GET);
-            String nullSaveCondition =  buildNullSaveCondition(getter);
-            String getterCommand = source.getSimpleName() + "." + buildGetter(getter);
+            FieldInfo fieldInfoSource = getFieldInfo(p.source().toLowerCase(), source, null);
+            String nullSaveCondition =  buildNullSaveCondition(fieldInfoSource);
+            String getterCommand = buildFullGetter(fieldInfoSource);
 
-            MethodInfo setter = getMethodInfo(p.target().toLowerCase(), target, MethodType.SET);
+            FieldInfo setter = getFieldInfo(p.target().toLowerCase(), target, null);
+
+            String setterCommand = buildSetterPreparation(setter);
+
 
             //check if getter can be applied
-            if (!processingEnv.getTypeUtils().isAssignable(getter.getType(), setter.getType())) {
+            if (!processingEnv.getTypeUtils().isAssignable(fieldInfoSource.getType(), setter.getType())) {
 
                 if (setter.getType().toString().equalsIgnoreCase(String.class.getCanonicalName())) {
                     getterCommand += ".toString()";
@@ -281,21 +388,12 @@ public class AnnotationProcessor extends AbstractProcessor {
             }
 
             Map<String, String> templateModelTargetSet = new HashMap<String, String>();
-            templateModelTargetSet.put("setterName", setter.getName());
-            templateModelTargetSet.put("getProperty", getterCommand);
+            templateModelTargetSet.put("setterCommand", "");
+            templateModelTargetSet.put("getterCommand", getterCommand);
 
             final String setCommand = Mustache.compiler().compile(getTemplate("templates/set.mustache")).execute(templateModelTargetSet);
 
-            //build getter/setter block surrounded by null safe condition
-            Map<String, String> commandModel = new HashMap<String, String>();
-            if (nullSaveCondition != null && !nullSaveCondition.isEmpty()) {
-                commandModel.put("condition", nullSaveCondition);
-            }
-            commandModel.put("body", setCommand);
-
-            final String command = Mustache.compiler().compile(getTemplate("templates/if.mustache")).execute(commandModel);
-
-
+            final String command = renderIfCondition(nullSaveCondition, setCommand);
 
             sb.append(command).append("\r\n");
 

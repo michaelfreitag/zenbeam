@@ -1,6 +1,6 @@
 package org.zenbeam.example.dto;
 
-import org.zenbeam.example.entity.ExampleA;
+import org.zenbeam.example.entity.ExampleB;
 
 public class ExampleDto {
 
@@ -12,7 +12,7 @@ public class ExampleDto {
 
     private String exampleBName;
 
-    private ExampleA exampleA;
+    private ExampleB exampleB;
 
     public String getExampleAId() {
         return exampleAId;
@@ -46,11 +46,11 @@ public class ExampleDto {
         this.exampleBName = exampleBName;
     }
 
-    public ExampleA getExampleA() {
-        return exampleA;
+    public ExampleB getExampleB() {
+        return exampleB;
     }
 
-    public void setExampleA(ExampleA exampleA) {
-        this.exampleA = exampleA;
+    public void setExampleB(ExampleB exampleB) {
+        this.exampleB = exampleB;
     }
 }
