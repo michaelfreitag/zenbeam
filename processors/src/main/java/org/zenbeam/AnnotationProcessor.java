@@ -27,6 +27,9 @@ public class AnnotationProcessor extends AbstractProcessor {
         GET, SET
     }
 
+    private enum DepthMode {
+       GROUND_FLOOR, BASEMENT
+    }
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
@@ -236,13 +239,33 @@ public class AnnotationProcessor extends AbstractProcessor {
         return fieldInfo.getOwner().getSimpleName().toString();
     }
 
-    private String buildNullSaveCondition(FieldInfo fieldInfo) {
 
-        if (fieldInfo.getChild() != null) {
-            return buildNullSaveCondition(fieldInfo.getChild());
+    private boolean shouldTraverse(FieldInfo fieldInfo, DepthMode depthMode) {
+
+        boolean traverse = false;
+        if (depthMode == DepthMode.BASEMENT) {
+            if (fieldInfo.getChild() != null) {
+                traverse = true;
+            }
+        }
+
+        if (depthMode == DepthMode.GROUND_FLOOR) {
+            if (fieldInfo.getChild() != null && fieldInfo.getChild().getChild() != null) {
+                traverse = true;
+            }
+        }
+
+        return traverse;
+    }
+
+    private String buildNullSaveCondition(FieldInfo fieldInfo, DepthMode depthMode) {
+
+
+        if (shouldTraverse(fieldInfo, depthMode)) {
+            return buildNullSaveCondition(fieldInfo.getChild(), depthMode);
         } else {
             StringBuffer nullSaveCondition = new StringBuffer();
-            nullSaveCondition.append(getRootFieldName(fieldInfo)).append(".").append(buildFullGetter(fieldInfo)).append(" != null");
+            nullSaveCondition.append(getRootFieldName(fieldInfo)).append(".").append(buildGetter(fieldInfo)).append(" != null");
             return nullSaveCondition.toString();
         }
 
@@ -259,28 +282,41 @@ public class AnnotationProcessor extends AbstractProcessor {
     }
 
 
+    private FieldInfo getRoot(FieldInfo fieldInfo) {
+        if (fieldInfo.getParent() == null) {
+            return fieldInfo;
+        } else {
+            return getRoot(fieldInfo.getParent());
+        }
+    }
 
-    private String buildFullGetter(FieldInfo fieldInfo) {
 
-        StringBuffer getter = new StringBuffer();
+    private FieldInfo getDeepestChild(FieldInfo fieldInfo) {
+        if (fieldInfo.getChild() == null) {
+            return fieldInfo;
+        } else {
+            return getDeepestChild(fieldInfo.getChild());
+        }
+    }
 
-        if (fieldInfo.getParent() != null) {
-            getter.append(buildFullGetter(fieldInfo.getParent().cloneWithoutChild())).append(".");
+    private String buildFullGetter(FieldInfo fieldInfo, DepthMode depthMode) {
+
+        StringBuffer result = new StringBuffer();
+
+        //in case of root node set add owner attribute name
+        if (fieldInfo.getParent() == null) {
+            result.append(fieldInfo.getOwner()).append(".");
         }
 
         ExecutableElement method = findMethod(fieldInfo.getOwner(), fieldInfo.getField(), MethodType.GET);
-        getter.append(method.getSimpleName()).append("()");
+        result.append(method.getSimpleName()).append("()");
 
+        if (shouldTraverse(fieldInfo, depthMode)) {
 
-        if (fieldInfo.getChild() != null) {
-
-            if (!getter.toString().isEmpty()) {
-                getter.append(".");
-            }
-            getter.append(buildFullGetter(fieldInfo.getChild()));
+            result.append(".").append(buildFullGetter(fieldInfo.getChild(), depthMode));
         }
 
-        return getter.toString();
+        return result.toString();
     }
 
     private String buildInstanciation(FieldInfo fieldInfo) {
@@ -296,11 +332,27 @@ public class AnnotationProcessor extends AbstractProcessor {
         StringBuffer result = new StringBuffer();
         ExecutableElement method = findMethod(fieldInfo.getOwner(), fieldInfo.getField(), MethodType.SET);
 
+        result.append(fieldInfo.getOwner()).append(".");
 
-        result.append(getRootFieldName(fieldInfo)).append(".");
+        result.append(method.getSimpleName())
+                .append("(")
+                .append(command)
+                .append(");");
 
-        if (fieldInfo.getParent() != null) {
-            result.append(buildFullGetter(fieldInfo.getParent().cloneWithoutChild())).append(".");
+        return result.toString();
+
+    }
+
+    private String buildFullSetter(FieldInfo fieldInfo, String command) {
+
+        StringBuffer result = new StringBuffer();
+        FieldInfo childestChild = getDeepestChild(fieldInfo);
+        ExecutableElement method = findMethod(childestChild.getOwner(), childestChild.getField(), MethodType.SET);
+
+        if (fieldInfo.getChild() != null) {
+            result.append(buildFullGetter(fieldInfo, DepthMode.GROUND_FLOOR)).append(".");
+        } else {
+            result.append(fieldInfo.getOwner()).append(".");
         }
 
         result.append(method.getSimpleName())
@@ -329,27 +381,25 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         StringBuffer command = new StringBuffer();
 
-        String setter = "";
-        String nullSaveCondition = "";
+        String setter;
+        String nullSaveCondition;
 
         if (fieldInfo.getChild() != null) {
 
             //null save prepare
-            FieldInfo fieldInfoWithOutChild = new FieldInfo();
-            fieldInfoWithOutChild.setOwner(fieldInfo.getOwner());
-            fieldInfoWithOutChild.setField(fieldInfo.getField());
-            nullSaveCondition = buildNullSaveCondition(fieldInfoWithOutChild);
+            FieldInfo fieldInfoWithOutChild = fieldInfo.cloneWithoutChild();
+            nullSaveCondition = buildNullSaveCondition(fieldInfoWithOutChild, DepthMode.BASEMENT);
             setter = buildSetter(fieldInfoWithOutChild, buildInstanciation(fieldInfoWithOutChild));
 
-            final String ifCommand = renderIfCondition(nullSaveCondition, setter);
-            command.append(ifCommand).append("\r\n");
+            command.append(renderIfCondition(nullSaveCondition, setter)).append("\r\n");
 
-            final String childCommands = buildSetterPreparation(fieldInfo.getChild());
-            command.append(childCommands).append("\r\n");
+            if (fieldInfo.getChild().getChild() != null) {
+                command.append(buildSetterPreparation(fieldInfo.getChild())).append("\r\n");
+            }
 
         } else {
 
-            nullSaveCondition = buildNullSaveCondition(fieldInfo);
+            nullSaveCondition = buildNullSaveCondition(fieldInfo, DepthMode.BASEMENT);
             setter = buildSetter(fieldInfo, buildInstanciation(fieldInfo));
 
             command.append(renderIfCondition(nullSaveCondition, setter)).append("\r\n");
@@ -363,22 +413,24 @@ public class AnnotationProcessor extends AbstractProcessor {
 
     private String buildProjections(Projections projections, VariableElement source, VariableElement target) {
 
-        //collection meta information getter/setter
-
         StringBuffer sb = new StringBuffer();
 
+        //go throw every definition
         for (Projection p : projections.value()) {
 
-            FieldInfo fieldInfoSource = getFieldInfo(p.source().toLowerCase(), source, null);
-            String nullSaveCondition =  buildNullSaveCondition(fieldInfoSource);
-            String getterCommand = buildFullGetter(fieldInfoSource);
+            FieldInfo fieldInfoSource = getRoot(getFieldInfo(p.source().toLowerCase(), source, null));
+            FieldInfo fieldInfoTarget = getRoot(getFieldInfo(p.target().toLowerCase(), target, null));
 
-            FieldInfo setter = getFieldInfo(p.target().toLowerCase(), target, null);
 
-            String setterCommand = buildSetterPreparation(setter);
+            sb.append("/* handle projection source: ")
+                    .append(p.source()).append(" ")
+                    .append(" target: ").append(p.target())
+                    .append(" */").append("\r\n");
 
+            String nullSaveCondition =  buildNullSaveCondition(fieldInfoSource, DepthMode.GROUND_FLOOR);
 
             //check if getter can be applied
+            /*
             if (!processingEnv.getTypeUtils().isAssignable(fieldInfoSource.getType(), setter.getType())) {
 
                 if (setter.getType().toString().equalsIgnoreCase(String.class.getCanonicalName())) {
@@ -386,14 +438,13 @@ public class AnnotationProcessor extends AbstractProcessor {
                 }
 
             }
+            */
 
-            Map<String, String> templateModelTargetSet = new HashMap<String, String>();
-            templateModelTargetSet.put("setterCommand", "");
-            templateModelTargetSet.put("getterCommand", getterCommand);
+            StringBuffer setCommand = new StringBuffer();
+            setCommand.append(buildSetterPreparation(fieldInfoTarget));
+            setCommand.append(buildFullSetter(fieldInfoTarget, buildFullGetter(fieldInfoSource, DepthMode.BASEMENT)));
 
-            final String setCommand = Mustache.compiler().compile(getTemplate("templates/set.mustache")).execute(templateModelTargetSet);
-
-            final String command = renderIfCondition(nullSaveCondition, setCommand);
+            final String command = renderIfCondition(nullSaveCondition, setCommand.toString());
 
             sb.append(command).append("\r\n");
 
