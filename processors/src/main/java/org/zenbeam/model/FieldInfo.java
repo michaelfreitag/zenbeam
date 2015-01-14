@@ -1,15 +1,12 @@
-package org.zenbeam;
+package org.zenbeam.model;
 
 import javax.lang.model.element.VariableElement;
-import javax.lang.model.type.TypeMirror;
 
 public class FieldInfo {
 
     private FieldInfo child;
 
     private FieldInfo parent;
-
-    private TypeMirror type;
 
     private VariableElement field;
 
@@ -28,9 +25,7 @@ public class FieldInfo {
 
         FieldInfo result = new FieldInfo();
         result.setOwner(this.getOwner());
-        result.setType(this.getType());
         result.setField(this.getField());
-
         return result;
 
     }
@@ -43,6 +38,9 @@ public class FieldInfo {
         return result;
 
     }
+
+
+
 
     public FieldInfo getChild() {
         return child;
@@ -58,14 +56,6 @@ public class FieldInfo {
 
     public void setParent(FieldInfo parent) {
         this.parent = parent;
-    }
-
-    public TypeMirror getType() {
-        return type;
-    }
-
-    public void setType(TypeMirror type) {
-        this.type = type;
     }
 
     public VariableElement getField() {
