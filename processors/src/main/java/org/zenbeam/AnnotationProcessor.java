@@ -30,6 +30,9 @@ public class AnnotationProcessor extends AbstractProcessor {
         GET, SET
     }
 
+    private enum ComparisonType {
+        EQUAL, NOT_EQUAL
+    }
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
@@ -232,10 +235,16 @@ public class AnnotationProcessor extends AbstractProcessor {
     }
 
 
-    private String buildNullSaveCondition(FieldInfo fieldInfo, DepthMode depthMode) {
+    private String buildNullSaveCondition(FieldInfo fieldInfo, DepthMode depthMode, ComparisonType comparisonType) {
 
         StringBuffer nullSaveCondition = new StringBuffer();
-        nullSaveCondition.append(buildFullGetter(fieldInfo, depthMode)).append(" != null");
+
+        String comparisionSign = " == ";
+        if (comparisonType == ComparisonType.NOT_EQUAL) {
+            comparisionSign = " != ";
+        }
+
+        nullSaveCondition.append(buildFullGetter(fieldInfo, depthMode)).append(comparisionSign).append("null");
         return nullSaveCondition.toString();
 
     }
@@ -340,7 +349,7 @@ public class AnnotationProcessor extends AbstractProcessor {
 
             //null save prepare
             FieldInfo fieldInfoWithOutChild = FieldInfoUtils.getRoot(FieldInfoUtils.cloneUp(fieldInfo));
-            nullSaveCondition = buildNullSaveCondition(fieldInfoWithOutChild, DepthMode.BASEMENT);
+            nullSaveCondition = buildNullSaveCondition(fieldInfoWithOutChild, DepthMode.BASEMENT, ComparisonType.EQUAL);
             setter = buildFullSetter(fieldInfoWithOutChild, buildInstanciation(fieldInfo));
 
             command.append(renderIfCondition(nullSaveCondition, setter)).append("\r\n");
@@ -351,7 +360,7 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         } else {
 
-            nullSaveCondition = buildNullSaveCondition(fieldInfo, DepthMode.BASEMENT);
+            nullSaveCondition = buildNullSaveCondition(fieldInfo, DepthMode.BASEMENT, ComparisonType.EQUAL);
             setter = buildSetter(fieldInfo, buildInstanciation(fieldInfo));
 
             command.append(renderIfCondition(nullSaveCondition, setter)).append("\r\n");
@@ -383,7 +392,7 @@ public class AnnotationProcessor extends AbstractProcessor {
             String nullSaveCondition = "";
 
             if (fieldInfoSource.getChild() != null) {
-                nullSaveCondition = buildNullSaveCondition(fieldInfoSource, DepthMode.GROUND_FLOOR);
+                nullSaveCondition = buildNullSaveCondition(fieldInfoSource, DepthMode.GROUND_FLOOR, ComparisonType.NOT_EQUAL);
             }
 
             //check if getter can be applied
