@@ -3,6 +3,7 @@ package org.zenbeam;
 import com.samskivert.mustache.Mustache;
 import org.zenbeam.enums.DepthMode;
 import org.zenbeam.model.FieldInfo;
+import org.zenbeam.util.ExceptionsUtils;
 import org.zenbeam.util.FieldInfoUtils;
 import org.zenbeam.util.StringUtils;
 
@@ -16,10 +17,6 @@ import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.ElementFilter;
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
-import java.net.URL;
-import java.nio.charset.Charset;
-import java.nio.file.Files;
-import java.nio.file.Paths;
 import java.util.*;
 
 @SupportedAnnotationTypes("org.zenbeam.ZenBeamer")
@@ -36,6 +33,9 @@ public class AnnotationProcessor extends AbstractProcessor {
 
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
+
+        boolean result = true;
+
         try {
             for (final Element e : roundEnv.getElementsAnnotatedWith(ZenBeamer.class))
 
@@ -49,94 +49,82 @@ public class AnnotationProcessor extends AbstractProcessor {
                             packageElement.getQualifiedName() + "." + generatedClassName
                     );
 
-                    try {
+                    Map<String, Object> context = new HashMap<String, Object>();
+                    context.put("packageName", packageElement.getQualifiedName().toString());
+                    context.put("generatedClassName", generatedClassName);
+                    context.put("interfaceName", element.getSimpleName().toString());
 
-                        Map<String, Object> context = new HashMap<String, Object>();
-                        context.put("packageName", packageElement.getQualifiedName().toString());
-                        context.put("generatedClassName", generatedClassName);
-                        context.put("interfaceName", element.getSimpleName().toString());
+                    //import statements
+                    List<String> imports = new ArrayList<String>();
 
-                        //import statements
-                        List<String> imports = new ArrayList<String>();
+                    //process methods
+                    for (ExecutableElement ee : ElementFilter.methodsIn(element.getEnclosedElements())) {
 
-                        //process methods
-                        for (ExecutableElement ee : ElementFilter.methodsIn(element.getEnclosedElements())) {
+                        //get projection definitions
+                        Projections projections = ee.getAnnotation(Projections.class);
 
-                            //get projection definitions
-                            Projections projections = ee.getAnnotation(Projections.class);
+                        //method name
+                        Map<String, Object> methodContext = new HashMap<String, Object>();
+                        methodContext.put("name", ee.getSimpleName().toString());
 
-                            //method name
-                            Map<String, Object> methodContext = new HashMap<String, Object>();
-                            methodContext.put("name", ee.getSimpleName().toString());
+                        //method attributes
+                        List<String> methodAttributes = new ArrayList<String>();
+                        VariableElement source = null;
+                        VariableElement target = null;
 
-                            //method attributes
-                            List<String> methodAttributes = new ArrayList<String>();
-                            VariableElement source = null;
-                            VariableElement target = null;
+                        for (VariableElement va : ee.getParameters()) {
+                            //add type to import
+                            imports.add(va.asType().toString());
+                            //add method attribute
+                            methodAttributes.add(va.asType() + " " + va.getSimpleName());
 
-                            for (VariableElement va : ee.getParameters()) {
-                                //add type to import
-                                imports.add(va.asType().toString());
-                                //add method attribute
-                                methodAttributes.add(va.asType() + " " + va.getSimpleName());
-
-                                if (va.getSimpleName().toString().equalsIgnoreCase("source")) {
-                                    source = va;
-                                }
-
-                                if (va.getSimpleName().toString().equalsIgnoreCase("target")) {
-                                    target = va;
-                                }
-
+                            if (va.getSimpleName().toString().equalsIgnoreCase("source")) {
+                                source = va;
                             }
 
-                            methodContext.put("visibility", ee.getReturnType().toString());
-                            methodContext.put("returnType", ee.getReturnType().toString());
-                            methodContext.put("signature", StringUtils.join(methodAttributes, ", "));
-                            methodContext.put("body", buildProjections(projections, source, target));
-
-                            final String method = Mustache.compiler().compile(getTemplate("templates/method.mustache")).execute(methodContext);
-
-                            context.put("methods", method);
+                            if (va.getSimpleName().toString().equalsIgnoreCase("target")) {
+                                target = va;
+                            }
 
                         }
 
-                        context.put("imports", imports);
+                        methodContext.put("visibility", ee.getReturnType().toString());
+                        methodContext.put("returnType", ee.getReturnType().toString());
+                        methodContext.put("signature", StringUtils.join(methodAttributes, ", "));
+                        methodContext.put("body", buildProjections(projections, source, target));
 
-                        final String fileContents = Mustache.compiler().compile(getTemplate("templates/class_implements.mustache")).execute(context);
-                        jfo.openWriter().append(fileContents).close();
+                        final String method = Mustache.compiler().compile(CodeTemplates.getMethodTemplate()).execute(methodContext);
 
-                    } catch (Exception exception) {
-                        System.err.println(e);
+                        context.put("methods", method);
+
                     }
 
+                    context.put("imports", imports);
+
+                    final String fileContents = Mustache.compiler().compile(CodeTemplates.getClassTemplate()).execute(context);
+                    jfo.openWriter().append(fileContents).close();
+
+                    printInfo("Class [" + generatedClassName + "] generated!");
+
                 }
-            return true;
+
         } catch (Exception e) {
-            System.err.println(e);
-            return true;
+            printError(ExceptionsUtils.getStacktraceAsString(e));
+            return result;
         }
-    }
-
-
-    private String getTemplate(String template) {
-
-        String result = "";
-        try {
-            URL url = this.getClass().getClassLoader().getResource(template);
-            List<String> lines = Files.readAllLines(Paths.get(url.toURI()), Charset.defaultCharset());
-            result = StringUtils.join(lines, "\r\n");
-        } catch (Exception e) {
-            System.err.println(e);
-        }
-
 
         return result;
     }
 
+
     private void printError(String msg) {
         processingEnv.getMessager().printMessage(Diagnostic.Kind.ERROR, msg);
     }
+
+    private void printInfo(String msg) {
+        processingEnv.getMessager().printMessage(Diagnostic.Kind.NOTE, msg);
+    }
+
 
     private VariableElement findField(String name, VariableElement element) {
 
@@ -159,9 +147,9 @@ public class AnnotationProcessor extends AbstractProcessor {
             }
         }
 
-         if (result == null) {
-             printError(String.format("Field [%s] not found in [%]", name, element.getSimpleName()));
-         }
+        if (result == null) {
+            printError(String.format("Field [%s] not found in [%]", name, element.getSimpleName()));
+        }
 
         return result;
     }
@@ -334,7 +322,7 @@ public class AnnotationProcessor extends AbstractProcessor {
         }
         commandModel.put("body", body);
 
-        return Mustache.compiler().compile(getTemplate("templates/if.mustache")).execute(commandModel);
+        return Mustache.compiler().compile(CodeTemplates.getIfTemplate()).execute(commandModel);
 
     }
 
@@ -366,7 +354,6 @@ public class AnnotationProcessor extends AbstractProcessor {
             command.append(renderIfCondition(nullSaveCondition, setter)).append("\r\n");
 
         }
-
 
 
         return command.toString();
@@ -430,8 +417,8 @@ public class AnnotationProcessor extends AbstractProcessor {
 
     private String buildTypeConversion(FieldInfo source, FieldInfo target, String getterCommand) {
 
-       FieldInfo sourceField = FieldInfoUtils.getDeepestChild(source);
-       FieldInfo targetField = FieldInfoUtils.getDeepestChild(target);
+        FieldInfo sourceField = FieldInfoUtils.getDeepestChild(source);
+        FieldInfo targetField = FieldInfoUtils.getDeepestChild(target);
 
 
         if (!processingEnv.getTypeUtils().isAssignable(sourceField.getField().asType(), targetField.getField().asType())) {
