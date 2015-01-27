@@ -13,6 +13,8 @@
     <orderEntry type="sourceFolder" forTests="false" />
     <orderEntry type="module" module-name="annotations" />
     <orderEntry type="module" module-name="processors" />
+    <orderEntry type="module" module-name="annotations" />
+    <orderEntry type="module" module-name="processors" />
     <orderEntry type="library" name="Maven: com.samskivert:jmustache:1.9" level="project" />
   </component>
   <component name="org.twodividedbyzero.idea.findbugs">

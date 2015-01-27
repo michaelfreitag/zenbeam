@@ -11,6 +11,7 @@ public class PropertyConverter {
     public PropertyConverter() {
 
         registerConverter(new StringLongConverter());
+        registerConverter(new LongStringConverter());
 
     }
 
