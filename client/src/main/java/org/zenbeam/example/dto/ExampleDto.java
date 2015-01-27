@@ -14,6 +14,8 @@ public class ExampleDto {
 
     private ExampleB exampleB;
 
+    private Long exampleNumber;
+
     public String getExampleAId() {
         return exampleAId;
     }
@@ -52,5 +54,13 @@ public class ExampleDto {
 
     public void setExampleB(ExampleB exampleB) {
         this.exampleB = exampleB;
+    }
+
+    public Long getExampleNumber() {
+        return exampleNumber;
+    }
+
+    public void setExampleNumber(Long exampleNumber) {
+        this.exampleNumber = exampleNumber;
     }
 }

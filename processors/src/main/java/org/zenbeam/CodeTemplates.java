@@ -12,9 +12,13 @@ public class CodeTemplates {
 
         result.append("package {{packageName}};").append(DOUBLE_LINE_FEED);
         result.append("import javax.ejb.Stateless;").append(DOUBLE_LINE_FEED);
+        result.append("import org.zenbeam.converter.PropertyConverter;").append(DOUBLE_LINE_FEED);
         result.append("@Stateless").append(LINE_FEED);
         result.append("public class {{generatedClassName}} implements {{interfaceName}} {").append(DOUBLE_LINE_FEED);
-        result.append("    {{methods}}").append(DOUBLE_LINE_FEED);
+        result.append("    private PropertyConverter propertyConverter = new PropertyConverter();").append(DOUBLE_LINE_FEED);
+        result.append("    {{#methods}}").append(DOUBLE_LINE_FEED);
+        result.append("    {{.}}").append(DOUBLE_LINE_FEED);
+        result.append("    {{/methods}}").append(DOUBLE_LINE_FEED);
         result.append("}");
 
         return result.toString();

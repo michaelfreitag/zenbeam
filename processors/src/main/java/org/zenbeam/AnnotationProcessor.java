@@ -56,6 +56,7 @@ public class AnnotationProcessor extends AbstractProcessor {
 
                     //import statements
                     List<String> imports = new ArrayList<String>();
+                    List<String> methods = new ArrayList<String>();
 
                     //process methods
                     for (ExecutableElement ee : ElementFilter.methodsIn(element.getEnclosedElements())) {
@@ -95,10 +96,11 @@ public class AnnotationProcessor extends AbstractProcessor {
 
                         final String method = Mustache.compiler().compile(CodeTemplates.getMethodTemplate()).execute(methodContext);
 
-                        context.put("methods", method);
+                        methods.add(method);
+
 
                     }
-
+                    context.put("methods", methods);
                     context.put("imports", imports);
 
                     final String fileContents = Mustache.compiler().compile(CodeTemplates.getClassTemplate()).execute(context);
@@ -423,10 +425,20 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         if (!processingEnv.getTypeUtils().isAssignable(sourceField.getField().asType(), targetField.getField().asType())) {
 
-            //handle String conversion
+
+            getterCommand = "propertyConverter.convert(" + targetField.getField().asType().toString() + ".class , " + getterCommand + ")";
+
+            /*
+            // to String.class
             if (targetField.getField().asType().toString().equalsIgnoreCase(String.class.getCanonicalName())) {
                 getterCommand += ".toString()";
             }
+
+            // to Long.class
+            if (targetField.getField().asType().toString().equalsIgnoreCase(Long.class.getCanonicalName())) {
+
+            }
+            */
 
         }
 
