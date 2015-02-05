@@ -13,4 +13,6 @@ public @interface Projection {
 
     String target();
 
+    boolean instantiateNewIfNotNull() default false;
+
 }

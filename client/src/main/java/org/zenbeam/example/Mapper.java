@@ -24,6 +24,7 @@ public interface Mapper {
 
 
     @Projections({
+            @Projection(source = "exampleCId", target = "exampleB.exampleC.id", instantiateNewIfNotNull = true),
             @Projection(source = "exampleAId", target = "id"),
             @Projection(source = "exampleNumber", target = "exampleNumber"),
     })

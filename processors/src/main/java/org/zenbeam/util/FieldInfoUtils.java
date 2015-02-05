@@ -26,6 +26,19 @@ public class FieldInfoUtils {
     }
 
 
+    public static String getPath(FieldInfo fieldInfo) {
+
+        StringBuffer result = new StringBuffer();
+
+        if (fieldInfo.getChild() != null) {
+            result.append(fieldInfo.getField().getSimpleName()).append(".").append(getPath(fieldInfo.getChild()));
+        } else {
+            result.append(fieldInfo.getField().getSimpleName());
+        }
+
+        return result.toString();
+    }
+
     public static FieldInfo getDeepestChild(FieldInfo fieldInfo) {
         if (fieldInfo.getChild() == null) {
             return fieldInfo;

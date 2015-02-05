@@ -16,6 +16,8 @@ public class ExampleDto {
 
     private Long exampleNumber;
 
+    private String exampleCId;
+
     public String getExampleAId() {
         return exampleAId;
     }
@@ -62,5 +64,13 @@ public class ExampleDto {
 
     public void setExampleNumber(Long exampleNumber) {
         this.exampleNumber = exampleNumber;
+    }
+
+    public String getExampleCId() {
+        return exampleCId;
+    }
+
+    public void setExampleCId(String exampleCId) {
+        this.exampleCId = exampleCId;
     }
 }

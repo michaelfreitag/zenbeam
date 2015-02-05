@@ -2,8 +2,10 @@ package org.zenbeam;
 
 import com.samskivert.mustache.Mustache;
 import org.zenbeam.enums.DepthMode;
+import org.zenbeam.model.FieldCommand;
 import org.zenbeam.model.FieldInfo;
 import org.zenbeam.util.ExceptionsUtils;
+import org.zenbeam.util.FieldCommandUtils;
 import org.zenbeam.util.FieldInfoUtils;
 import org.zenbeam.util.StringUtils;
 
@@ -225,7 +227,7 @@ public class AnnotationProcessor extends AbstractProcessor {
     }
 
 
-    private String buildNullSaveCondition(FieldInfo fieldInfo, DepthMode depthMode, ComparisonType comparisonType) {
+    private String buildCondition(FieldInfo fieldInfo, DepthMode depthMode, ComparisonType comparisonType, String comparisionValue) {
 
         StringBuffer nullSaveCondition = new StringBuffer();
 
@@ -234,7 +236,7 @@ public class AnnotationProcessor extends AbstractProcessor {
             comparisionSign = " != ";
         }
 
-        nullSaveCondition.append(buildFullGetter(fieldInfo, depthMode)).append(comparisionSign).append("null");
+        nullSaveCondition.append(buildFullGetter(fieldInfo, depthMode)).append(comparisionSign).append(comparisionValue);
         return nullSaveCondition.toString();
 
     }
@@ -328,9 +330,9 @@ public class AnnotationProcessor extends AbstractProcessor {
 
     }
 
-    private String buildSetterPreparation(FieldInfo fieldInfo) {
+    private List<FieldCommand> buildSetterPreparation(FieldInfo fieldInfo) {
 
-        StringBuffer command = new StringBuffer();
+        List<FieldCommand> commands = new ArrayList<FieldCommand>();
 
         String setter;
         String nullSaveCondition;
@@ -339,31 +341,32 @@ public class AnnotationProcessor extends AbstractProcessor {
 
             //null save prepare
             FieldInfo fieldInfoWithOutChild = FieldInfoUtils.getRoot(FieldInfoUtils.cloneUp(fieldInfo));
-            nullSaveCondition = buildNullSaveCondition(fieldInfoWithOutChild, DepthMode.BASEMENT, ComparisonType.EQUAL);
+            nullSaveCondition = buildCondition(fieldInfoWithOutChild, DepthMode.BASEMENT, ComparisonType.EQUAL, "null");
             setter = buildFullSetter(fieldInfoWithOutChild, buildInstanciation(fieldInfo));
 
-            command.append(renderIfCondition(nullSaveCondition, setter)).append("\r\n");
+            commands.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoWithOutChild), renderIfCondition(nullSaveCondition, setter)));
 
             if (fieldInfo.getChild().getChild() != null) {
-                command.append(buildSetterPreparation(fieldInfo.getChild())).append("\r\n");
+                commands.addAll(buildSetterPreparation(fieldInfo.getChild()));
             }
 
         } else {
 
-            nullSaveCondition = buildNullSaveCondition(fieldInfo, DepthMode.BASEMENT, ComparisonType.EQUAL);
+
+            nullSaveCondition = buildCondition(fieldInfo, DepthMode.BASEMENT, ComparisonType.EQUAL, "null");
             setter = buildSetter(fieldInfo, buildInstanciation(fieldInfo));
 
-            command.append(renderIfCondition(nullSaveCondition, setter)).append("\r\n");
+            commands.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfo), renderIfCondition(nullSaveCondition, setter)));
 
         }
 
 
-        return command.toString();
+        return commands;
     }
 
     private String buildProjections(Projections projections, VariableElement source, VariableElement target) {
 
-        StringBuffer sb = new StringBuffer();
+        List<FieldCommand> commandBlockList = new ArrayList<FieldCommand>();
 
         //go throw every definition
         for (Projection p : projections.value()) {
@@ -372,50 +375,73 @@ public class AnnotationProcessor extends AbstractProcessor {
             FieldInfo fieldInfoTarget = FieldInfoUtils.getRoot(getFieldInfo(p.target().toLowerCase(), target, null));
 
 
-            sb.append("/* handle projection: source [")
-                    .append(p.source()).append("] ")
-                    .append(" -- target [").append(p.target())
-                    .append("] */").append("\r\n");
-
-            /* null save condition is only required if source has depth > 1 */
-            String nullSaveCondition = "";
-
-            if (fieldInfoSource.getChild() != null) {
-                nullSaveCondition = buildNullSaveCondition(fieldInfoSource, DepthMode.GROUND_FLOOR, ComparisonType.NOT_EQUAL);
-            }
-
-            //check if getter can be applied
-            /*
-            if (!processingEnv.getTypeUtils().isAssignable(fieldInfoSource.getType(), setter.getType())) {
-
-                if (setter.getType().toString().equalsIgnoreCase(String.class.getCanonicalName())) {
-                    getterCommand += ".toString()";
-                }
-
-            }
-            */
-
-            StringBuffer commandBlock = new StringBuffer();
-
             /* setter preparation is only required if depth > 1 */
             if (fieldInfoTarget.getChild() != null) {
-                commandBlock.append(buildSetterPreparation(fieldInfoTarget));
+                commandBlockList.addAll(buildSetterPreparation(fieldInfoTarget));
             }
 
-            commandBlock.append(buildFullSetter(fieldInfoTarget, buildTypeConversion(fieldInfoSource, fieldInfoTarget, buildFullGetter(fieldInfoSource, DepthMode.BASEMENT))));
 
-            String finalCommand = commandBlock.toString();
-            if (!nullSaveCondition.isEmpty()) {
-                finalCommand = renderIfCondition(nullSaveCondition, commandBlock.toString());
+            /* instantiate new on update if not null */
+            if (p.instantiateNewIfNotNull()) {
+                commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget), buildInstanciationIfNotNull(fieldInfoSource, fieldInfoTarget)));
+            }
+
+            /* null save condition is only required if source has depth > 1 */
+            StringBuffer condition = new StringBuffer();
+
+            if (fieldInfoSource.getChild() != null) {
+                condition.append(buildCondition(fieldInfoSource, DepthMode.GROUND_FLOOR, ComparisonType.NOT_EQUAL, "null"));
+            }
+
+            String command = buildFullSetter(fieldInfoTarget, buildTypeConversion(fieldInfoSource, fieldInfoTarget, buildFullGetter(fieldInfoSource, DepthMode.BASEMENT)));
+            if (condition.length() > 0) {
+                command = renderIfCondition(condition.toString(), command);
+            }
+
+            commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget), command));
+
+            /*
+            String finalCommand = FieldCommandUtils.getCommandsAsString(commandBlockList);
+            if (condition.length() > 0) {
+                finalCommand = renderIfCondition(condition.toString(), FieldCommandUtils.getCommandsAsString(commandBlockList));
             }
 
             sb.append(finalCommand).append("\r\n");
+            */
 
         }
 
-        return sb.toString();
+        FieldCommandUtils.removeDuplicates(commandBlockList);
+        FieldCommandUtils.sortFieldCommandListByFieldDepth(commandBlockList);
+
+
+        return FieldCommandUtils.getCommandsAsString(commandBlockList);
     }
 
+
+    private String buildInstanciationIfNotNull(FieldInfo source, FieldInfo target) {
+
+        FieldInfo targetField = FieldInfoUtils.getDeepestChild(target);
+        if (targetField.getParent() != null) {
+            targetField = FieldInfoUtils.getRoot(FieldInfoUtils.cloneUp(targetField.getParent()));
+        } else {
+            targetField = FieldInfoUtils.getRoot(targetField);
+        }
+
+
+
+        StringBuffer condition = new StringBuffer();
+
+        condition.append(buildCondition(target, DepthMode.BASEMENT, ComparisonType.NOT_EQUAL, buildTypeConversion(source, target, buildFullGetter(source, DepthMode.BASEMENT))));
+
+        StringBuffer sb = new StringBuffer();
+        sb.append("/* instantiate if not null */").append("\r\n");
+        sb.append(renderIfCondition(condition.toString(), buildFullSetter(targetField, buildInstanciation(FieldInfoUtils.getDeepestChild(targetField)))));
+
+        return sb.toString();
+
+
+    }
 
     private String buildTypeConversion(FieldInfo source, FieldInfo target, String getterCommand) {
 

@@ -39,8 +39,8 @@ public class CodeTemplates {
 
         StringBuffer result = new StringBuffer();
         result.append("{{#condition}}").append(DOUBLE_LINE_FEED);
-        result.append("if ({{condition}}) {").append(DOUBLE_LINE_FEED);
-        result.append("     {{body}}").append(DOUBLE_LINE_FEED);
+        result.append("if ({{condition}}) {").append(LINE_FEED);
+        result.append("     {{body}}").append(LINE_FEED);
         result.append("}").append(DOUBLE_LINE_FEED);
         result.append("{{/condition}}").append(DOUBLE_LINE_FEED);
         result.append("{{^condition}}").append(DOUBLE_LINE_FEED);
