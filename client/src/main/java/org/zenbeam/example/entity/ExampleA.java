@@ -1,10 +1,14 @@
 package org.zenbeam.example.entity;
 
+import java.util.List;
+
 public class ExampleA extends BaseExample {
 
     private String name;
 
     private ExampleB exampleB;
+
+    private List<ExampleB> exampleBList;
 
     private String exampleNumber;
 
@@ -22,6 +26,14 @@ public class ExampleA extends BaseExample {
 
     public void setExampleB(ExampleB exampleB) {
         this.exampleB = exampleB;
+    }
+
+    public List<ExampleB> getExampleBList() {
+        return exampleBList;
+    }
+
+    public void setExampleBList(List<ExampleB> exampleBList) {
+        this.exampleBList = exampleBList;
     }
 
     public String getExampleNumber() {

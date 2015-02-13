@@ -1,6 +1,6 @@
 package org.zenbeam.converter;
 
-public class LongStringConverter implements Converter<Long, String> {
+public class LongStringObjectConverter implements ObjectConverter<Long, String> {
 
 
     @Override

@@ -24,9 +24,12 @@ public interface Mapper {
 
 
     @Projections({
+            @Projection(source= "exampleBName", target="exampleBList[0].name")
+            /*
             @Projection(source = "exampleCId", target = "exampleB.exampleC.id", instantiateNewIfNotNull = true),
             @Projection(source = "exampleAId", target = "id"),
             @Projection(source = "exampleNumber", target = "exampleNumber"),
+            */
     })
     public void fromExampleDtoToExampleA(ExampleDto source, ExampleA target);
 

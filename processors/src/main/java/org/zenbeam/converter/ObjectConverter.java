@@ -1,6 +1,6 @@
 package org.zenbeam.converter;
 
-public interface Converter<S, T> {
+public interface ObjectConverter<S, T> {
 
     public T convert(S source);
 

@@ -3,6 +3,9 @@ package org.zenbeam.util;
 import org.zenbeam.enums.DepthMode;
 import org.zenbeam.model.FieldInfo;
 
+import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.TypeMirror;
+
 public class FieldInfoUtils {
 
     public static FieldInfo cloneUp(FieldInfo fieldInfo) {
@@ -63,6 +66,41 @@ public class FieldInfoUtils {
         }
 
         return traverse;
+    }
+
+
+    public static String getFirstFieldName(String s) {
+
+        String result = s;
+
+        if (s.contains("[")) {
+            result = s.substring(0, s.indexOf("["));
+        } else if (s.contains(".")) {
+            result = s.substring(0, s.indexOf("."));
+        }
+
+        return result;
+    }
+
+    public static boolean isList(String typeName) {
+        return typeName.startsWith("java.util.List");
+    }
+
+    public static TypeMirror getListType(TypeMirror type) {
+
+        TypeMirror result = null;
+
+        if (type instanceof DeclaredType) {
+            DeclaredType declaredType = (DeclaredType) type;
+            if (!declaredType.getTypeArguments().isEmpty()) {
+                for (TypeMirror genericMirrorType : declaredType.getTypeArguments()) {
+                    result = genericMirrorType;
+                }
+            }
+        }
+
+        return result;
+
     }
 
 

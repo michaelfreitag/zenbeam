@@ -4,10 +4,7 @@ import com.samskivert.mustache.Mustache;
 import org.zenbeam.enums.DepthMode;
 import org.zenbeam.model.FieldCommand;
 import org.zenbeam.model.FieldInfo;
-import org.zenbeam.util.ExceptionsUtils;
-import org.zenbeam.util.FieldCommandUtils;
-import org.zenbeam.util.FieldInfoUtils;
-import org.zenbeam.util.StringUtils;
+import org.zenbeam.util.*;
 
 import javax.annotation.processing.AbstractProcessor;
 import javax.annotation.processing.RoundEnvironment;
@@ -15,6 +12,7 @@ import javax.annotation.processing.SupportedAnnotationTypes;
 import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.*;
+import javax.lang.model.type.DeclaredType;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.ElementFilter;
 import javax.tools.Diagnostic;
@@ -206,20 +204,28 @@ public class AnnotationProcessor extends AbstractProcessor {
         result.setParent(parent);
         result.setOwner(element);
 
+
+        //is List?
+        if (FieldInfoUtils.isList(element.asType().toString())) {
+            System.out.println("list");
+            //element = FieldInfoUtils.getListType(element.)
+        }
+
+
         if (property != null && !property.isEmpty()) {
 
             if (property.contains(".")) {
 
                 //get first property element
                 result.setChild(getFieldInfo(property.substring(property.indexOf(".") + 1, property.length())
-                        , findField(property.substring(0, property.indexOf(".")), element), result));
+                        , findField(FieldInfoUtils.getFirstFieldName(property), element), result));
 
                 //cut property name
                 property = property.substring(0, property.indexOf("."));
 
             }
 
-            result.setField(findField(property, element));
+            result.setField(findField(FieldInfoUtils.getFirstFieldName(property), element));
 
         }
 
@@ -451,8 +457,24 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         if (!processingEnv.getTypeUtils().isAssignable(sourceField.getField().asType(), targetField.getField().asType())) {
 
+            //check collections
+            if (targetField.getField().asType().toString().startsWith("java.util.List")) {
 
-            getterCommand = "propertyConverter.convert(" + targetField.getField().asType().toString() + ".class , " + getterCommand + ")";
+                TypeMirror genericTypeArgument = null;
+
+                if (targetField.getField().asType() instanceof DeclaredType) {
+                    DeclaredType declaredType = (DeclaredType) targetField.getField().asType();
+                    if (!declaredType.getTypeArguments().isEmpty()) {
+                        for (TypeMirror genericMirrorType : declaredType.getTypeArguments()) {
+                            genericTypeArgument = genericMirrorType;
+                        }
+                    }
+                }
+
+                getterCommand = "propertyConverter.convertToList(" + genericTypeArgument.toString() + ".class , " + getterCommand + ")";
+            } else {
+                getterCommand = "propertyConverter.convert(" + targetField.getField().asType().toString() + ".class , " + getterCommand + ")";
+            }
 
             /*
             // to String.class

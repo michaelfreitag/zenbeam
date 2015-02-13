@@ -1,26 +1,28 @@
 package org.zenbeam.converter;
 
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 
 public class PropertyConverter {
 
 
-    private Map<Class, Map<Class, Converter>> converters = new HashMap<Class, Map<Class, Converter>>();
+    private Map<Class, Map<Class, ObjectConverter>> converters = new HashMap<Class, Map<Class, ObjectConverter>>();
 
     public PropertyConverter() {
 
-        registerConverter(new StringLongConverter());
-        registerConverter(new LongStringConverter());
+        registerConverter(new StringLongObjectConverter());
+        registerConverter(new LongStringObjectConverter());
 
     }
 
-    private void registerConverter(Converter converter) {
+    private void registerConverter(ObjectConverter converter) {
 
-        Map<Class, Converter> availableConverters = converters.get(converter.getSourceClass());
+        Map<Class, ObjectConverter> availableConverters = converters.get(converter.getSourceClass());
 
         if (availableConverters == null) {
-            availableConverters = new HashMap<Class, Converter>();
+            availableConverters = new HashMap<Class, ObjectConverter>();
             converters.put(converter.getSourceClass(), availableConverters);
         }
 
@@ -35,11 +37,11 @@ public class PropertyConverter {
 
         if (o != null) {
             //check if converter available
-            Map<Class, Converter> availableConverters = converters.get(o.getClass());
+            Map<Class, ObjectConverter> availableConverters = converters.get(o.getClass());
 
             if (availableConverters != null) {
 
-                Converter c = availableConverters.get(targetClazz);
+                ObjectConverter c = availableConverters.get(targetClazz);
                 if (c != null) {
                     result = (T)c.convert(o);
                 }
@@ -49,6 +51,20 @@ public class PropertyConverter {
         }
 
         return result;
+    }
+
+    public <T> List<T> convertToList(Class<T> listType, Object o) {
+
+        List<T> result = new ArrayList<>();
+
+        if (listType.isAssignableFrom(o.getClass())) {
+            result.add((T)o);
+        } else {
+            result.add(convert(listType, o));
+        }
+
+        return result;
+
     }
 
 

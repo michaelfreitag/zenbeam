@@ -6,9 +6,9 @@ import static org.hamcrest.CoreMatchers.equalTo;
 import static org.hamcrest.CoreMatchers.instanceOf;
 import static org.junit.Assert.assertThat;
 
-public class LongStringConverterTest {
+public class LongStringObjectConverterTest {
 
-    private LongStringConverter converter = new LongStringConverter();
+    private LongStringObjectConverter converter = new LongStringObjectConverter();
 
     @Test
     public void testConvert() {
