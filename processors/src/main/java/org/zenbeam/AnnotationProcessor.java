@@ -128,14 +128,14 @@ public class AnnotationProcessor extends AbstractProcessor {
     }
 
 
-    private VariableElement findField(String name, VariableElement element) {
+    private VariableElement findField(String name, TypeMirror typeMirror) {
 
         VariableElement result = null;
         List<Element> elements = new ArrayList<Element>();
 
-        elements.add(processingEnv.getTypeUtils().asElement(element.asType()));
+        elements.add(processingEnv.getTypeUtils().asElement(typeMirror));
 
-        for (TypeMirror tm : processingEnv.getTypeUtils().directSupertypes(element.asType())) {
+        for (TypeMirror tm : processingEnv.getTypeUtils().directSupertypes(typeMirror)) {
             elements.add(processingEnv.getTypeUtils().asElement(tm));
         }
 
@@ -150,7 +150,7 @@ public class AnnotationProcessor extends AbstractProcessor {
         }
 
         if (result == null) {
-            printError(String.format("Field [%s] not found in [%]", name, element.getSimpleName()));
+            printError(String.format("Field [%s] not found in [%]", name, typeMirror.toString()));
         }
 
         return result;
@@ -161,7 +161,12 @@ public class AnnotationProcessor extends AbstractProcessor {
         ExecutableElement result = null;
 
         List<Element> elements = new ArrayList<Element>();
-        elements.add(processingEnv.getTypeUtils().asElement(owner.asType()));
+
+        if (FieldInfoUtils.isList(owner.asType().toString())) {
+            elements.add(processingEnv.getTypeUtils().asElement(FieldInfoUtils.getListType(owner.asType())));
+        } else {
+            elements.add(processingEnv.getTypeUtils().asElement(owner.asType()));
+        }
 
         for (TypeMirror tm : processingEnv.getTypeUtils().directSupertypes(owner.asType())) {
             elements.add(processingEnv.getTypeUtils().asElement(tm));
@@ -205,10 +210,12 @@ public class AnnotationProcessor extends AbstractProcessor {
         result.setOwner(element);
 
 
+        TypeMirror elementType = element.asType();
+
         //is List?
-        if (FieldInfoUtils.isList(element.asType().toString())) {
+        if (FieldInfoUtils.isList(elementType.toString())) {
             System.out.println("list");
-            //element = FieldInfoUtils.getListType(element.)
+            elementType = FieldInfoUtils.getListType(elementType);
         }
 
 
@@ -218,14 +225,14 @@ public class AnnotationProcessor extends AbstractProcessor {
 
                 //get first property element
                 result.setChild(getFieldInfo(property.substring(property.indexOf(".") + 1, property.length())
-                        , findField(FieldInfoUtils.getFirstFieldName(property), element), result));
+                        , findField(FieldInfoUtils.getFirstFieldName(property), elementType), result));
 
                 //cut property name
                 property = property.substring(0, property.indexOf("."));
 
             }
 
-            result.setField(findField(FieldInfoUtils.getFirstFieldName(property), element));
+            result.setField(findField(FieldInfoUtils.getFirstFieldName(property), elementType));
 
         }
 
@@ -281,7 +288,15 @@ public class AnnotationProcessor extends AbstractProcessor {
     private String buildInstanciation(FieldInfo fieldInfo) {
 
         StringBuffer result = new StringBuffer();
-        result.append("new ").append(fieldInfo.getField().asType().toString()).append("()");
+
+        //if fieldtype is list
+        if (FieldInfoUtils.isList(fieldInfo.getField().asType().toString())) {
+            result.append("new ArrayList<").append(FieldInfoUtils.getListType(fieldInfo.getField().asType())).append(">()");
+        } else {
+            result.append("new ").append(fieldInfo.getField().asType().toString()).append("()");
+        }
+
+
         return result.toString();
 
     }
@@ -379,6 +394,16 @@ public class AnnotationProcessor extends AbstractProcessor {
 
             FieldInfo fieldInfoSource = FieldInfoUtils.getRoot(getFieldInfo(p.source().toLowerCase(), source, null));
             FieldInfo fieldInfoTarget = FieldInfoUtils.getRoot(getFieldInfo(p.target().toLowerCase(), target, null));
+
+
+            //if list, get subtree under list, create separate object
+            FieldInfo fieldInfoList = FieldInfoUtils.getFirstListProperty(fieldInfoTarget);
+
+            if (fieldInfoList != null) {
+                commandBlockList.addAll(buildSetterPreparation(FieldInfoUtils.cloneDown(fieldInfoList.getChild())));
+            } else {
+
+            }
 
 
             /* setter preparation is only required if depth > 1 */

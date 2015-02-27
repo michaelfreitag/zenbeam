@@ -20,6 +20,20 @@ public class FieldInfoUtils {
         return result;
     }
 
+    public static FieldInfo cloneDown(FieldInfo fieldInfo) {
+
+        FieldInfo result = fieldInfo.cloneWithoutParentChild();
+        if (fieldInfo.getChild()!= null) {
+            FieldInfo childCloned = cloneDown(fieldInfo.getChild());
+            childCloned.setChild(result);
+            result.setChild(childCloned);
+        }
+
+        return result;
+    }
+
+
+
     public static FieldInfo getRoot(FieldInfo fieldInfo) {
         if (fieldInfo.getParent() == null) {
             return fieldInfo;
@@ -100,6 +114,19 @@ public class FieldInfoUtils {
         }
 
         return result;
+
+    }
+
+
+    public static FieldInfo getFirstListProperty(FieldInfo fieldInfo) {
+
+        if (isList(fieldInfo.getField().asType().toString())) {
+            return fieldInfo;
+        } else if (fieldInfo.getChild() != null) {
+            return getFirstListProperty(fieldInfo.getChild());
+        } else {
+            return null;
+        }
 
     }
 
