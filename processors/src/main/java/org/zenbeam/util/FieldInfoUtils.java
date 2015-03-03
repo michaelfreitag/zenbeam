@@ -96,6 +96,18 @@ public class FieldInfoUtils {
         return result;
     }
 
+
+    public static String getFirstCollectionKey(String s) {
+
+        String result = null;
+
+        if (s.contains("[")) {
+            result = s.substring(s.indexOf("[") + 1, s.indexOf("]"));
+        }
+
+        return result;
+    }
+
     public static boolean isList(String typeName) {
         return typeName.startsWith("java.util.List");
     }

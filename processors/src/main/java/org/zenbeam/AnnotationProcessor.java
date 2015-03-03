@@ -1,6 +1,5 @@
 package org.zenbeam;
 
-import com.samskivert.mustache.Mustache;
 import org.zenbeam.enums.DepthMode;
 import org.zenbeam.model.FieldCommand;
 import org.zenbeam.model.FieldInfo;
@@ -94,7 +93,7 @@ public class AnnotationProcessor extends AbstractProcessor {
                         methodContext.put("signature", StringUtils.join(methodAttributes, ", "));
                         methodContext.put("body", buildProjections(projections, source, target));
 
-                        final String method = Mustache.compiler().compile(CodeTemplates.getMethodTemplate()).execute(methodContext);
+                        final String method = MustacheUtils.getCompiler().compile(CodeTemplates.getMethodTemplate()).execute(methodContext);
 
                         methods.add(method);
 
@@ -103,7 +102,7 @@ public class AnnotationProcessor extends AbstractProcessor {
                     context.put("methods", methods);
                     context.put("imports", imports);
 
-                    final String fileContents = Mustache.compiler().compile(CodeTemplates.getClassTemplate()).execute(context);
+                    final String fileContents = MustacheUtils.getCompiler().compile(CodeTemplates.getClassTemplate()).execute(context);
                     jfo.openWriter().append(fileContents).close();
 
                     printInfo("Class [" + generatedClassName + "] generated!");
@@ -156,7 +155,39 @@ public class AnnotationProcessor extends AbstractProcessor {
         return result;
     }
 
-    private ExecutableElement findMethod(VariableElement owner, VariableElement field, MethodType methodType) {
+    private ExecutableElement findMethodByName(VariableElement owner, String name) {
+
+        ExecutableElement result = null;
+
+        List<Element> elements = new ArrayList<Element>();
+
+        elements.add(processingEnv.getTypeUtils().asElement(owner.asType()));
+
+        for (TypeMirror tm : processingEnv.getTypeUtils().directSupertypes(owner.asType())) {
+            elements.add(processingEnv.getTypeUtils().asElement(tm));
+        }
+
+        for (Element e : elements) {
+            for (ExecutableElement method : ElementFilter.methodsIn(e.getEnclosedElements())) {
+
+                if (name.equalsIgnoreCase(method.getSimpleName().toString().toLowerCase())) {
+                    result = method;
+                }
+
+            }
+        }
+
+        if (result == null) {
+            printError(String.format("No Method [%s] found in [%]", name, owner.getSimpleName()));
+        }
+
+
+        return result;
+    }
+
+
+
+    private ExecutableElement findMethodByField(VariableElement owner, VariableElement field, MethodType methodType) {
 
         ExecutableElement result = null;
 
@@ -203,18 +234,36 @@ public class AnnotationProcessor extends AbstractProcessor {
     }
 
 
-    private FieldInfo getFieldInfo(String property, VariableElement element, FieldInfo parent) {
+    private FieldInfo getFieldInfo(String property, VariableElement element, FieldInfo parent, String collectionKey) {
 
         FieldInfo result = new FieldInfo();
         result.setParent(parent);
         result.setOwner(element);
 
+        if (parent != null) {
+            parent.setChild(result);
+        }
+
 
         TypeMirror elementType = element.asType();
 
         //is List?
+        FieldInfo listGetter = new FieldInfo();
         if (FieldInfoUtils.isList(elementType.toString())) {
-            System.out.println("list");
+
+            listGetter.setOwner(element);
+            listGetter.setCollectionKey(collectionKey);
+            listGetter.setField(result.getField());
+
+            // linking parent/child
+            listGetter.setChild(result);
+            listGetter.setParent(parent);
+            result.setParent(listGetter);
+
+            if (parent != null) {
+                parent.setChild(listGetter);
+            }
+
             elementType = FieldInfoUtils.getListType(elementType);
         }
 
@@ -224,15 +273,18 @@ public class AnnotationProcessor extends AbstractProcessor {
             if (property.contains(".")) {
 
                 //get first property element
-                result.setChild(getFieldInfo(property.substring(property.indexOf(".") + 1, property.length())
-                        , findField(FieldInfoUtils.getFirstFieldName(property), elementType), result));
+                getFieldInfo(property.substring(property.indexOf(".") + 1, property.length())
+                        , findField(FieldInfoUtils.getFirstFieldName(property), elementType), result, FieldInfoUtils.getFirstCollectionKey(property));
 
                 //cut property name
                 property = property.substring(0, property.indexOf("."));
 
             }
 
-            result.setField(findField(FieldInfoUtils.getFirstFieldName(property), elementType));
+            VariableElement field = findField(FieldInfoUtils.getFirstFieldName(property), elementType);
+            result.setField(field);
+            listGetter.setField(field);
+
 
         }
 
@@ -249,7 +301,11 @@ public class AnnotationProcessor extends AbstractProcessor {
             comparisionSign = " != ";
         }
 
-        nullSaveCondition.append(buildFullGetter(fieldInfo, depthMode)).append(comparisionSign).append(comparisionValue);
+        if (fieldInfo.getParent() != null) {
+            nullSaveCondition.append(buildFullGetter(FieldInfoUtils.getRoot(FieldInfoUtils.cloneUp(fieldInfo.getParent())), depthMode)).append(comparisionSign).append(comparisionValue).append(" && ");
+        }
+
+        nullSaveCondition.append(buildFullGetter(FieldInfoUtils.getRoot(fieldInfo), depthMode)).append(comparisionSign).append(comparisionValue);
         return nullSaveCondition.toString();
 
     }
@@ -258,7 +314,7 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         StringBuffer getter = new StringBuffer();
 
-        ExecutableElement method = findMethod(fieldInfo.getOwner(), fieldInfo.getField(), MethodType.GET);
+        ExecutableElement method = findMethodByField(fieldInfo.getOwner(), fieldInfo.getField(), MethodType.GET);
         getter.append(method.getSimpleName()).append("()");
 
         return getter.toString();
@@ -274,11 +330,27 @@ public class AnnotationProcessor extends AbstractProcessor {
             result.append(fieldInfo.getOwner()).append(".");
         }
 
-        ExecutableElement method = findMethod(fieldInfo.getOwner(), fieldInfo.getField(), MethodType.GET);
-        result.append(method.getSimpleName()).append("()");
+        ExecutableElement method;
+        if (fieldInfo.getParent() != null && FieldInfoUtils.isList(fieldInfo.getParent().getField().asType().toString())) {
+            method = findMethodByName(fieldInfo.getOwner(), "get");
+        } else {
+            method = findMethodByField(fieldInfo.getOwner(), fieldInfo.getField(), MethodType.GET);
+        }
+        result.append(method.getSimpleName());
+
+        if (fieldInfo.getCollectionKey() != null && !fieldInfo.getCollectionKey().isEmpty()) {
+            result.append("(").append(fieldInfo.getCollectionKey()).append(")");
+        } else {
+            result.append("()");
+        }
+
+        /*
+
+            result.append(".").append("get(0)");
+        }
+        */
 
         if (FieldInfoUtils.shouldTraverse(fieldInfo, depthMode)) {
-
             result.append(".").append(buildFullGetter(fieldInfo.getChild(), depthMode));
         }
 
@@ -290,8 +362,10 @@ public class AnnotationProcessor extends AbstractProcessor {
         StringBuffer result = new StringBuffer();
 
         //if fieldtype is list
-        if (FieldInfoUtils.isList(fieldInfo.getField().asType().toString())) {
-            result.append("new ArrayList<").append(FieldInfoUtils.getListType(fieldInfo.getField().asType())).append(">()");
+        if (fieldInfo.getField() != null && FieldInfoUtils.isList(fieldInfo.getField().asType().toString())) {
+            result.append("new java.util.ArrayList<").append(FieldInfoUtils.getListType(fieldInfo.getField().asType())).append(">()");
+        } else if (fieldInfo.getParent() != null && FieldInfoUtils.isList(fieldInfo.getParent().getField().asType().toString())) {
+            result.append("new ").append(FieldInfoUtils.getListType(fieldInfo.getParent().getField().asType()).toString()).append("()");
         } else {
             result.append("new ").append(fieldInfo.getField().asType().toString()).append("()");
         }
@@ -304,7 +378,7 @@ public class AnnotationProcessor extends AbstractProcessor {
     private String buildSetter(FieldInfo fieldInfo, String command) {
 
         StringBuffer result = new StringBuffer();
-        ExecutableElement method = findMethod(fieldInfo.getOwner(), fieldInfo.getField(), MethodType.SET);
+        ExecutableElement method = findMethodByField(fieldInfo.getOwner(), fieldInfo.getField(), MethodType.SET);
 
         result.append(fieldInfo.getOwner()).append(".");
 
@@ -321,7 +395,14 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         StringBuffer result = new StringBuffer();
         FieldInfo childestChild = FieldInfoUtils.getDeepestChild(fieldInfo);
-        ExecutableElement method = findMethod(childestChild.getOwner(), childestChild.getField(), MethodType.SET);
+        ExecutableElement method;
+        if (childestChild.getParent() != null && FieldInfoUtils.isList(childestChild.getParent().getField().asType().toString())) {
+            method = findMethodByName(childestChild.getOwner(), "add");
+        } else {
+            method = findMethodByField(childestChild.getOwner(), childestChild.getField(), MethodType.SET);
+        }
+
+
 
         if (fieldInfo.getChild() != null) {
             result.append(buildFullGetter(fieldInfo, DepthMode.GROUND_FLOOR)).append(".");
@@ -347,7 +428,7 @@ public class AnnotationProcessor extends AbstractProcessor {
         }
         commandModel.put("body", body);
 
-        return Mustache.compiler().compile(CodeTemplates.getIfTemplate()).execute(commandModel);
+        return MustacheUtils.getCompiler().compile(CodeTemplates.getIfTemplate()).execute(commandModel);
 
     }
 
@@ -392,15 +473,15 @@ public class AnnotationProcessor extends AbstractProcessor {
         //go throw every definition
         for (Projection p : projections.value()) {
 
-            FieldInfo fieldInfoSource = FieldInfoUtils.getRoot(getFieldInfo(p.source().toLowerCase(), source, null));
-            FieldInfo fieldInfoTarget = FieldInfoUtils.getRoot(getFieldInfo(p.target().toLowerCase(), target, null));
+            FieldInfo fieldInfoSource = FieldInfoUtils.getRoot(getFieldInfo(p.source().toLowerCase(), source, null, null));
+            FieldInfo fieldInfoTarget = FieldInfoUtils.getRoot(getFieldInfo(p.target().toLowerCase(), target, null, null));
 
 
             //if list, get subtree under list, create separate object
             FieldInfo fieldInfoList = FieldInfoUtils.getFirstListProperty(fieldInfoTarget);
 
             if (fieldInfoList != null) {
-                commandBlockList.addAll(buildSetterPreparation(FieldInfoUtils.cloneDown(fieldInfoList.getChild())));
+                commandBlockList.addAll(buildSetterPreparation(fieldInfoTarget));
             } else {
 
             }

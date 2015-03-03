@@ -12,6 +12,8 @@ public class FieldInfo {
 
     private VariableElement owner;
 
+    private String collectionKey;
+
 
     public FieldInfo cloneWithoutChild() {
 
@@ -26,6 +28,7 @@ public class FieldInfo {
         FieldInfo result = new FieldInfo();
         result.setOwner(this.getOwner());
         result.setField(this.getField());
+        result.setCollectionKey(this.getCollectionKey());
         return result;
 
     }
@@ -72,5 +75,13 @@ public class FieldInfo {
 
     public void setOwner(VariableElement owner) {
         this.owner = owner;
+    }
+
+    public String getCollectionKey() {
+        return collectionKey;
+    }
+
+    public void setCollectionKey(String collectionKey) {
+        this.collectionKey = collectionKey;
     }
 }
