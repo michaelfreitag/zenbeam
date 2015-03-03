@@ -52,5 +52,20 @@ public class FieldInfoUtilsTest {
     }
 
 
+    @Test
+    public void testLongPathArrayProperty() {
+
+        //given
+        String property = "abc.def.ghi.j[]";
+
+        //when
+        String field = FieldInfoUtils.getFirstFieldName(property);
+
+        //then
+        assertThat(field, equalTo("abc"));
+
+    }
+
+
 
 }

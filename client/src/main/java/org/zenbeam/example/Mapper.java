@@ -24,8 +24,9 @@ public interface Mapper {
 
 
     @Projections({
-            @Projection(source= "exampleBName", target="exampleBList[0].name")
+            @Projection(source= "exampleAName", target="exampleB.exampleC.exampleAList[0].name")
             /*
+            @Projection(source= "exampleBName", target="exampleBList[0].name")
             @Projection(source = "exampleCId", target = "exampleB.exampleC.id", instantiateNewIfNotNull = true),
             @Projection(source = "exampleAId", target = "id"),
             @Projection(source = "exampleNumber", target = "exampleNumber"),

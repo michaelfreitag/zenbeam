@@ -87,10 +87,16 @@ public class FieldInfoUtils {
 
         String result = s;
 
-        if (s.contains("[")) {
+        if (s.contains(".")) {
+
+            if (s.contains("[") && s.indexOf("[") < s.indexOf(".")) {
+                result = s.substring(0, s.indexOf("["));
+            } else {
+                result = s.substring(0, s.indexOf("."));
+            }
+
+        } else if (s.contains("[")) {
             result = s.substring(0, s.indexOf("["));
-        } else if (s.contains(".")) {
-            result = s.substring(0, s.indexOf("."));
         }
 
         return result;
