@@ -3,6 +3,7 @@ package org.zenbeam;
 import org.zenbeam.enums.DepthMode;
 import org.zenbeam.model.FieldCommand;
 import org.zenbeam.model.FieldInfo;
+import org.zenbeam.model.ServiceResource;
 import org.zenbeam.util.*;
 
 import javax.annotation.processing.AbstractProcessor;
@@ -12,10 +13,12 @@ import javax.annotation.processing.SupportedSourceVersion;
 import javax.lang.model.SourceVersion;
 import javax.lang.model.element.*;
 import javax.lang.model.type.DeclaredType;
+import javax.lang.model.type.MirroredTypeException;
 import javax.lang.model.type.TypeMirror;
 import javax.lang.model.util.ElementFilter;
 import javax.tools.Diagnostic;
 import javax.tools.JavaFileObject;
+import java.beans.Introspector;
 import java.util.*;
 
 @SupportedAnnotationTypes("org.zenbeam.ZenBeamer")
@@ -28,6 +31,10 @@ public class AnnotationProcessor extends AbstractProcessor {
 
     private enum ComparisonType {
         EQUAL, NOT_EQUAL
+    }
+
+    private enum ConditionMode {
+        SOURCE, TARGET
     }
 
     @Override
@@ -56,6 +63,7 @@ public class AnnotationProcessor extends AbstractProcessor {
                     //import statements
                     List<String> imports = new ArrayList<String>();
                     List<String> methods = new ArrayList<String>();
+                    Map<String, ServiceResource> serviceAttributes = new HashMap<String, ServiceResource>();
 
                     //process methods
                     for (ExecutableElement ee : ElementFilter.methodsIn(element.getEnclosedElements())) {
@@ -63,9 +71,13 @@ public class AnnotationProcessor extends AbstractProcessor {
                         //get projection definitions
                         Projections projections = ee.getAnnotation(Projections.class);
 
+                        //get all service resources
+                        serviceAttributes.putAll(getEntityServices(projections));
+
                         //method name
                         Map<String, Object> methodContext = new HashMap<String, Object>();
                         methodContext.put("name", ee.getSimpleName().toString());
+
 
                         //method attributes
                         List<String> methodAttributes = new ArrayList<String>();
@@ -99,6 +111,8 @@ public class AnnotationProcessor extends AbstractProcessor {
 
 
                     }
+
+                    context.put("attributes", serviceAttributes.values());
                     context.put("methods", methods);
                     context.put("imports", imports);
 
@@ -292,7 +306,7 @@ public class AnnotationProcessor extends AbstractProcessor {
     }
 
 
-    private String buildCondition(FieldInfo fieldInfo, DepthMode depthMode, ComparisonType comparisonType, String comparisionValue) {
+    private String buildCondition(FieldInfo fieldInfo, DepthMode depthMode, ComparisonType comparisonType, String comparisionValue, ConditionMode conditionMode) {
 
         StringBuffer nullSaveCondition = new StringBuffer();
 
@@ -301,25 +315,24 @@ public class AnnotationProcessor extends AbstractProcessor {
             comparisionSign = " != ";
         }
 
-        if (fieldInfo.getParent() != null) {
-            nullSaveCondition.append(buildFullGetter(FieldInfoUtils.getRoot(FieldInfoUtils.cloneUp(fieldInfo.getParent())), depthMode, MethodType.GET.name())).append(comparisionSign).append(comparisionValue).append(" && ");
+        FieldInfo childestChild = FieldInfoUtils.getDeepestChild(fieldInfo);
+
+        if (childestChild.getParent() != null && conditionMode == ConditionMode.SOURCE) {
+            /* in case of source the whole property path must be null save */
+            nullSaveCondition.append(buildCondition(FieldInfoUtils.cloneUp(childestChild.getParent()), depthMode, comparisonType, comparisionValue, conditionMode)).append(" && ");
         }
 
-        FieldInfo childestChild = FieldInfoUtils.getDeepestChild(fieldInfo);
-        if (FieldInfoUtils.isList(childestChild.getOwner().asType().toString()) && childestChild.getCollectionKey() != null && !childestChild.getCollectionKey().isEmpty()) {
+        if (FieldInfoUtils.isList(childestChild.getOwner().asType().toString()) && childestChild.getCollectionKey() != null && !childestChild.getCollectionKey().isEmpty() && conditionMode == ConditionMode.TARGET) {
 
             Long listIndex = Long.valueOf(childestChild.getCollectionKey());
             if (listIndex != null && listIndex >= 0) {
-                nullSaveCondition.append(buildFullGetter(FieldInfoUtils.getRoot(childestChild), depthMode, "size")).append(" > 0");
+                nullSaveCondition.append(buildFullGetter(FieldInfoUtils.getRoot(childestChild), depthMode, "size")).append(" <= ").append(childestChild.getCollectionKey());
             }
 
+        } else {
+            nullSaveCondition.append(buildFullGetter(FieldInfoUtils.getRoot(fieldInfo), depthMode, MethodType.GET.name())).append(comparisionSign).append(comparisionValue);
         }
 
-        if (nullSaveCondition.length() > 0) {
-            nullSaveCondition.append(" && ");
-        }
-
-        nullSaveCondition.append(buildFullGetter(FieldInfoUtils.getRoot(fieldInfo), depthMode, MethodType.GET.name())).append(comparisionSign).append(comparisionValue);
         return nullSaveCondition.toString();
 
     }
@@ -428,14 +441,22 @@ public class AnnotationProcessor extends AbstractProcessor {
 
     }
 
-
     private String renderIfCondition(String condition, String body) {
+        return renderIfCondition(condition, body, null);
+    }
+
+    private String renderIfCondition(String condition, String body, String elseBody) {
 
         Map<String, String> commandModel = new HashMap<String, String>();
         if (condition != null && !condition.isEmpty()) {
             commandModel.put("condition", condition);
         }
         commandModel.put("body", body);
+
+        if (elseBody == null) {
+            elseBody = "";
+        }
+        commandModel.put("elseBody", elseBody);
 
         return MustacheUtils.getCompiler().compile(CodeTemplates.getIfTemplate()).execute(commandModel);
 
@@ -452,7 +473,7 @@ public class AnnotationProcessor extends AbstractProcessor {
 
             //null save prepare
             FieldInfo fieldInfoWithOutChild = FieldInfoUtils.getRoot(FieldInfoUtils.cloneUp(fieldInfo));
-            nullSaveCondition = buildCondition(fieldInfoWithOutChild, DepthMode.BASEMENT, ComparisonType.EQUAL, "null");
+            nullSaveCondition = buildCondition(fieldInfoWithOutChild, DepthMode.BASEMENT, ComparisonType.EQUAL, "null", ConditionMode.TARGET);
             setter = buildFullSetter(fieldInfoWithOutChild, buildInstanciation(fieldInfo));
 
             commands.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoWithOutChild), renderIfCondition(nullSaveCondition, setter)));
@@ -464,7 +485,7 @@ public class AnnotationProcessor extends AbstractProcessor {
         } else {
 
 
-            nullSaveCondition = buildCondition(fieldInfo, DepthMode.BASEMENT, ComparisonType.EQUAL, "null");
+            nullSaveCondition = buildCondition(fieldInfo, DepthMode.BASEMENT, ComparisonType.EQUAL, "null", ConditionMode.TARGET);
             setter = buildSetter(fieldInfo, buildInstanciation(fieldInfo));
 
             commands.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfo), renderIfCondition(nullSaveCondition, setter)));
@@ -473,6 +494,47 @@ public class AnnotationProcessor extends AbstractProcessor {
 
 
         return commands;
+    }
+
+
+    private Map<String, ServiceResource> getEntityServices(Projections projections) {
+
+        Map<String, ServiceResource> result = new HashMap<String, ServiceResource>();
+
+        for (Projection p : projections.value()) {
+            ServiceResource serviceResource = getServiceResource(p);
+            if (serviceResource != null) {
+                result.put(serviceResource.getClazz(), serviceResource);
+            }
+        }
+
+        return result;
+    }
+
+    private ServiceResource getServiceResource(Projection p) {
+
+        ServiceResource result = null;
+
+        String entityServiceClass = null;
+        String simpleNameOfEntityServiceClass = null;
+
+        try {
+            p.entityService();
+        }  catch( MirroredTypeException mte ) {
+            TypeMirror tm =  mte.getTypeMirror();
+            TypeElement te = (TypeElement)processingEnv.getTypeUtils().asElement(tm);
+            entityServiceClass = te.getQualifiedName().toString();
+            simpleNameOfEntityServiceClass = te.getSimpleName().toString();
+        }
+
+        if (entityServiceClass != null && !entityServiceClass.isEmpty() && !entityServiceClass.equalsIgnoreCase(ProjectionEntityService.class.getName())) {
+            result = new ServiceResource();
+            result.setName(Introspector.decapitalize(simpleNameOfEntityServiceClass));
+            result.setClazz(entityServiceClass);
+
+        }
+
+        return result;
     }
 
     private String buildProjections(Projections projections, VariableElement source, VariableElement target) {
@@ -491,10 +553,7 @@ public class AnnotationProcessor extends AbstractProcessor {
 
             if (fieldInfoList != null) {
                 commandBlockList.addAll(buildSetterPreparation(fieldInfoTarget));
-            } else {
-
             }
-
 
             /* setter preparation is only required if depth > 1 */
             if (fieldInfoTarget.getChild() != null) {
@@ -504,14 +563,15 @@ public class AnnotationProcessor extends AbstractProcessor {
 
             /* instantiate new on update if not null */
             if (p.instantiateNewIfNotNull()) {
-                commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget), buildInstanciationIfNotNull(fieldInfoSource, fieldInfoTarget)));
+                ServiceResource serviceResource = getServiceResource(p);
+                commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget, true), buildInstanciationIfNotNull(fieldInfoSource, fieldInfoTarget, serviceResource)));
             }
 
             /* null save condition is only required if source has depth > 1 */
             StringBuffer condition = new StringBuffer();
 
             if (fieldInfoSource.getChild() != null) {
-                condition.append(buildCondition(fieldInfoSource, DepthMode.GROUND_FLOOR, ComparisonType.NOT_EQUAL, "null"));
+                condition.append(buildCondition(fieldInfoSource, DepthMode.GROUND_FLOOR, ComparisonType.NOT_EQUAL, "null", ConditionMode.SOURCE));
             }
 
             String command = buildFullSetter(fieldInfoTarget, buildTypeConversion(fieldInfoSource, fieldInfoTarget, buildFullGetter(fieldInfoSource, DepthMode.BASEMENT, MethodType.GET.name())));
@@ -520,15 +580,6 @@ public class AnnotationProcessor extends AbstractProcessor {
             }
 
             commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget), command));
-
-            /*
-            String finalCommand = FieldCommandUtils.getCommandsAsString(commandBlockList);
-            if (condition.length() > 0) {
-                finalCommand = renderIfCondition(condition.toString(), FieldCommandUtils.getCommandsAsString(commandBlockList));
-            }
-
-            sb.append(finalCommand).append("\r\n");
-            */
 
         }
 
@@ -540,7 +591,7 @@ public class AnnotationProcessor extends AbstractProcessor {
     }
 
 
-    private String buildInstanciationIfNotNull(FieldInfo source, FieldInfo target) {
+    private String buildInstanciationIfNotNull(FieldInfo source, FieldInfo target, ServiceResource serviceResource) {
 
         FieldInfo targetField = FieldInfoUtils.getDeepestChild(target);
         if (targetField.getParent() != null) {
@@ -550,14 +601,23 @@ public class AnnotationProcessor extends AbstractProcessor {
         }
 
 
-
+        //enclosed condition if property is different target
         StringBuffer condition = new StringBuffer();
+        condition.append(buildCondition(target, DepthMode.BASEMENT, ComparisonType.NOT_EQUAL, buildTypeConversion(source, target, buildFullGetter(source, DepthMode.BASEMENT, MethodType.GET.name())), ConditionMode.TARGET));
 
-        condition.append(buildCondition(target, DepthMode.BASEMENT, ComparisonType.NOT_EQUAL, buildTypeConversion(source, target, buildFullGetter(source, DepthMode.BASEMENT, MethodType.GET.name()))));
+        String instantiationBlock = buildFullSetter(targetField, buildInstanciation(FieldInfoUtils.getDeepestChild(targetField)));
+
+        //handle resource Service
+        if (serviceResource != null) {
+            String getObjectFromEntityService = serviceResource.getName() + ".get(" + buildFullGetter(source, DepthMode.BASEMENT, MethodType.GET.name()) + ")";
+            String conditionEntityService = getObjectFromEntityService + " != null";
+            instantiationBlock = renderIfCondition(conditionEntityService, buildFullSetter(targetField, getObjectFromEntityService), instantiationBlock);
+        }
+
 
         StringBuffer sb = new StringBuffer();
         sb.append("/* instantiate if not null */").append("\r\n");
-        sb.append(renderIfCondition(condition.toString(), buildFullSetter(targetField, buildInstanciation(FieldInfoUtils.getDeepestChild(targetField)))));
+        sb.append(renderIfCondition(condition.toString(), instantiationBlock));
 
         return sb.toString();
 
@@ -590,18 +650,6 @@ public class AnnotationProcessor extends AbstractProcessor {
             } else {
                 getterCommand = "propertyConverter.convert(" + targetField.getField().asType().toString() + ".class , " + getterCommand + ")";
             }
-
-            /*
-            // to String.class
-            if (targetField.getField().asType().toString().equalsIgnoreCase(String.class.getCanonicalName())) {
-                getterCommand += ".toString()";
-            }
-
-            // to Long.class
-            if (targetField.getField().asType().toString().equalsIgnoreCase(Long.class.getCanonicalName())) {
-
-            }
-            */
 
         }
 

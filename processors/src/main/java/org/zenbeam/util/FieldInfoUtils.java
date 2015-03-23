@@ -43,18 +43,29 @@ public class FieldInfoUtils {
     }
 
 
-    public static String getPath(FieldInfo fieldInfo) {
+    public static String getPath(FieldInfo fieldInfo, boolean voteUp) {
 
         StringBuffer result = new StringBuffer();
 
         if (fieldInfo.getChild() != null) {
-            result.append(fieldInfo.getField().getSimpleName()).append(".").append(getPath(fieldInfo.getChild()));
+            result.append(fieldInfo.getField().getSimpleName()).append(".").append(getPath(fieldInfo.getChild(), voteUp));
         } else {
+
+            if (voteUp) {
+                result.append("!");
+            }
+
             result.append(fieldInfo.getField().getSimpleName());
         }
 
         return result.toString();
     }
+
+    public static String getPath(FieldInfo fieldInfo) {
+
+        return getPath(fieldInfo, false);
+    }
+
 
     public static FieldInfo getDeepestChild(FieldInfo fieldInfo) {
         if (fieldInfo.getChild() == null) {

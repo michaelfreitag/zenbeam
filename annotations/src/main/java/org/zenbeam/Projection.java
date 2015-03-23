@@ -15,4 +15,6 @@ public @interface Projection {
 
     boolean instantiateNewIfNotNull() default false;
 
+    Class<? extends ProjectionEntityService> entityService() default ProjectionEntityService.class;
+
 }

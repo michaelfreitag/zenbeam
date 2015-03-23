@@ -25,7 +25,7 @@ public class FieldCommandUtils {
         StringBuffer result = new StringBuffer();
 
         for (FieldCommand fc : commands) {
-            result.append(fc.getCommand()).append("\r\n");
+            result.append("/* field key: ").append(fc.getFieldKey()).append(" */\r\n").append(fc.getCommand()).append("\r\n");
         }
 
         return result.toString();
