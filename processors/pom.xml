@@ -41,6 +41,7 @@
          <groupId>com.samskivert</groupId>
          <artifactId>jmustache</artifactId>
          <version>1.9</version>
+          <scope>compile</scope>
       </dependency>
        <dependency>
            <groupId>junit</groupId>
