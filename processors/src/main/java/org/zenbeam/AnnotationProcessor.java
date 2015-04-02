@@ -4,6 +4,8 @@ import org.zenbeam.enums.DepthMode;
 import org.zenbeam.model.FieldCommand;
 import org.zenbeam.model.FieldInfo;
 import org.zenbeam.model.ServiceResource;
+import org.zenbeam.service.CodeRenderService;
+import org.zenbeam.service.MustacheCodeRenderService;
 import org.zenbeam.util.*;
 
 import javax.annotation.processing.AbstractProcessor;
@@ -37,6 +39,8 @@ public class AnnotationProcessor extends AbstractProcessor {
         SOURCE, TARGET
     }
 
+    private CodeRenderService codeRenderService = new MustacheCodeRenderService();
+
     @Override
     public boolean process(Set<? extends TypeElement> annotations, RoundEnvironment roundEnv) {
 
@@ -55,11 +59,6 @@ public class AnnotationProcessor extends AbstractProcessor {
                             packageElement.getQualifiedName() + "." + generatedClassName
                     );
 
-                    Map<String, Object> context = new HashMap<String, Object>();
-                    context.put("packageName", packageElement.getQualifiedName().toString());
-                    context.put("generatedClassName", generatedClassName);
-                    context.put("interfaceName", element.getSimpleName().toString());
-
                     //import statements
                     List<String> imports = new ArrayList<String>();
                     List<String> methods = new ArrayList<String>();
@@ -74,11 +73,6 @@ public class AnnotationProcessor extends AbstractProcessor {
                         //get all service resources
                         serviceAttributes.putAll(getEntityServices(projections));
 
-                        //method name
-                        Map<String, Object> methodContext = new HashMap<String, Object>();
-                        methodContext.put("name", ee.getSimpleName().toString());
-
-
                         //method attributes
                         List<String> methodAttributes = new ArrayList<String>();
                         VariableElement source = null;
@@ -90,33 +84,36 @@ public class AnnotationProcessor extends AbstractProcessor {
                             //add method attribute
                             methodAttributes.add(va.asType() + " " + va.getSimpleName());
 
+                            //detect source element by name
                             if (va.getSimpleName().toString().equalsIgnoreCase("source")) {
                                 source = va;
                             }
 
+                            //detect target element by name
                             if (va.getSimpleName().toString().equalsIgnoreCase("target")) {
                                 target = va;
                             }
 
                         }
 
-                        methodContext.put("visibility", ee.getReturnType().toString());
-                        methodContext.put("returnType", ee.getReturnType().toString());
-                        methodContext.put("signature", StringUtils.join(methodAttributes, ", "));
-                        methodContext.put("body", buildProjections(projections, source, target));
 
-                        final String method = MustacheUtils.getCompiler().compile(CodeTemplates.getMethodTemplate()).execute(methodContext);
+                        final String method = codeRenderService.renderMethod(ee.getReturnType().toString(),
+                                ee.getReturnType().toString(),
+                                ee.getSimpleName().toString(),
+                                StringUtils.join(methodAttributes, ", "),
+                                buildProjections(projections, source, target));
 
                         methods.add(method);
 
 
                     }
 
-                    context.put("attributes", serviceAttributes.values());
-                    context.put("methods", methods);
-                    context.put("imports", imports);
-
-                    final String fileContents = MustacheUtils.getCompiler().compile(CodeTemplates.getClassTemplate()).execute(context);
+                    final String fileContents = codeRenderService.renderClass(packageElement.getQualifiedName().toString(),
+                            imports,
+                            generatedClassName,
+                            element.getSimpleName().toString(),
+                            serviceAttributes.values(),
+                            methods);
                     jfo.openWriter().append(fileContents).close();
 
                     printInfo("Class [" + generatedClassName + "] generated!");
@@ -441,26 +438,6 @@ public class AnnotationProcessor extends AbstractProcessor {
 
     }
 
-    private String renderIfCondition(String condition, String body) {
-        return renderIfCondition(condition, body, null);
-    }
-
-    private String renderIfCondition(String condition, String body, String elseBody) {
-
-        Map<String, String> commandModel = new HashMap<String, String>();
-        if (condition != null && !condition.isEmpty()) {
-            commandModel.put("condition", condition);
-        }
-        commandModel.put("body", body);
-
-        if (elseBody == null) {
-            elseBody = "";
-        }
-        commandModel.put("elseBody", elseBody);
-
-        return MustacheUtils.getCompiler().compile(CodeTemplates.getIfTemplate()).execute(commandModel);
-
-    }
 
     private List<FieldCommand> buildSetterPreparation(FieldInfo fieldInfo) {
 
@@ -476,7 +453,7 @@ public class AnnotationProcessor extends AbstractProcessor {
             nullSaveCondition = buildCondition(fieldInfoWithOutChild, DepthMode.BASEMENT, ComparisonType.EQUAL, "null", ConditionMode.TARGET);
             setter = buildFullSetter(fieldInfoWithOutChild, buildInstanciation(fieldInfo));
 
-            commands.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoWithOutChild), renderIfCondition(nullSaveCondition, setter)));
+            commands.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoWithOutChild), codeRenderService.renderIfCondition(nullSaveCondition, setter)));
 
             if (fieldInfo.getChild().getChild() != null) {
                 commands.addAll(buildSetterPreparation(fieldInfo.getChild()));
@@ -488,7 +465,7 @@ public class AnnotationProcessor extends AbstractProcessor {
             nullSaveCondition = buildCondition(fieldInfo, DepthMode.BASEMENT, ComparisonType.EQUAL, "null", ConditionMode.TARGET);
             setter = buildSetter(fieldInfo, buildInstanciation(fieldInfo));
 
-            commands.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfo), renderIfCondition(nullSaveCondition, setter)));
+            commands.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfo), codeRenderService.renderIfCondition(nullSaveCondition, setter)));
 
         }
 
@@ -576,7 +553,7 @@ public class AnnotationProcessor extends AbstractProcessor {
 
             String command = buildFullSetter(fieldInfoTarget, buildTypeConversion(fieldInfoSource, fieldInfoTarget, buildFullGetter(fieldInfoSource, DepthMode.BASEMENT, MethodType.GET.name())));
             if (condition.length() > 0) {
-                command = renderIfCondition(condition.toString(), command);
+                command = codeRenderService.renderIfCondition(condition.toString(), command);
             }
 
             commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget), command));
@@ -611,13 +588,13 @@ public class AnnotationProcessor extends AbstractProcessor {
         if (serviceResource != null) {
             String getObjectFromEntityService = serviceResource.getName() + ".get(" + buildFullGetter(source, DepthMode.BASEMENT, MethodType.GET.name()) + ")";
             String conditionEntityService = getObjectFromEntityService + " != null";
-            instantiationBlock = renderIfCondition(conditionEntityService, buildFullSetter(targetField, getObjectFromEntityService), instantiationBlock);
+            instantiationBlock = codeRenderService.renderIfCondition(conditionEntityService, buildFullSetter(targetField, getObjectFromEntityService), instantiationBlock);
         }
 
 
         StringBuffer sb = new StringBuffer();
         sb.append("/* instantiate if not null */").append("\r\n");
-        sb.append(renderIfCondition(condition.toString(), instantiationBlock));
+        sb.append(codeRenderService.renderIfCondition(condition.toString(), instantiationBlock));
 
         return sb.toString();
 

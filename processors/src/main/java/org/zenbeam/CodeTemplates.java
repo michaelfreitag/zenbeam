@@ -46,12 +46,9 @@ public class CodeTemplates {
         result.append("{{#condition}}").append(DOUBLE_LINE_FEED);
         result.append("if ({{condition}}) {").append(LINE_FEED);
         result.append("     {{body}}").append(LINE_FEED);
-        result.append("}");
-        result.append("{{#elseBody}}").append(DOUBLE_LINE_FEED);
-        result.append(" else {").append(DOUBLE_LINE_FEED);
+        result.append("}{{#elseBody}} else {").append(LINE_FEED);;
         result.append("     {{elseBody}}").append(LINE_FEED);
-        result.append("}");
-        result.append("{{/elseBody}}").append(DOUBLE_LINE_FEED);
+        result.append("} {{/elseBody}}").append(DOUBLE_LINE_FEED);
         result.append("{{/condition}}").append(DOUBLE_LINE_FEED);
         result.append("{{^condition}}").append(DOUBLE_LINE_FEED);
         result.append("     {{body}}").append(DOUBLE_LINE_FEED);
