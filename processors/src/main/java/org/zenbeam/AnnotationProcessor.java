@@ -307,10 +307,24 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         StringBuffer nullSaveCondition = new StringBuffer();
 
-        String comparisionSign = " == ";
+        //default equals
+        String comparisonMethod = ".equals(";
+        String comparisonPrefix = "";
+        String comparisonSuffix = ")";
         if (comparisonType == ComparisonType.NOT_EQUAL) {
-            comparisionSign = " != ";
+            comparisonPrefix = "!";
         }
+
+        if (comparisionValue.equals("null")) {
+
+            comparisonMethod = " == ";
+            comparisonPrefix = "";
+            comparisonSuffix = "";
+            if (comparisonType == ComparisonType.NOT_EQUAL) {
+                comparisonMethod = " != ";
+            }
+        }
+
 
         FieldInfo childestChild = FieldInfoUtils.getDeepestChild(fieldInfo);
 
@@ -327,7 +341,7 @@ public class AnnotationProcessor extends AbstractProcessor {
             }
 
         } else {
-            nullSaveCondition.append(buildFullGetter(FieldInfoUtils.getRoot(fieldInfo), depthMode, MethodType.GET.name())).append(comparisionSign).append(comparisionValue);
+            nullSaveCondition.append(comparisonPrefix).append(buildFullGetter(FieldInfoUtils.getRoot(fieldInfo), depthMode, MethodType.GET.name())).append(comparisonMethod).append(comparisionValue).append(comparisonSuffix);
         }
 
         return nullSaveCondition.toString();
@@ -580,6 +594,8 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         //enclosed condition if property is different target
         StringBuffer condition = new StringBuffer();
+        condition.append(buildCondition(target, DepthMode.BASEMENT, ComparisonType.NOT_EQUAL, "null", ConditionMode.TARGET));
+        condition.append(" && ");
         condition.append(buildCondition(target, DepthMode.BASEMENT, ComparisonType.NOT_EQUAL, buildTypeConversion(source, target, buildFullGetter(source, DepthMode.BASEMENT, MethodType.GET.name())), ConditionMode.TARGET));
 
         String instantiationBlock = buildFullSetter(targetField, buildInstanciation(FieldInfoUtils.getDeepestChild(targetField)));
