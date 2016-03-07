@@ -11,13 +11,13 @@ public class CodeTemplates {
         StringBuffer result = new StringBuffer();
 
         result.append("package {{packageName}};").append(DOUBLE_LINE_FEED);
-        result.append("import javax.ejb.Stateless;").append(LINE_FEED);
-        result.append("import javax.inject.Inject;").append(LINE_FEED);
+        result.append("import org.springframework.stereotype.Component;").append(LINE_FEED);
+        result.append("import org.springframework.beans.factory.annotation.Autowired;").append(LINE_FEED);
         result.append("import org.zenbeam.converter.PropertyConverter;").append(DOUBLE_LINE_FEED);
-        result.append("@Stateless").append(LINE_FEED);
+        result.append("@Component").append(LINE_FEED);
         result.append("public class {{generatedClassName}} implements {{interfaceName}} {").append(DOUBLE_LINE_FEED);
         result.append("    {{#attributes}}").append(DOUBLE_LINE_FEED);
-        result.append("    @Inject").append(LINE_FEED);
+        result.append("    @Autowired").append(LINE_FEED);
         result.append("    private {{clazz}} {{name}};").append(DOUBLE_LINE_FEED);
         result.append("    {{/attributes}}").append(DOUBLE_LINE_FEED);
         result.append("    private PropertyConverter propertyConverter = new PropertyConverter();").append(DOUBLE_LINE_FEED);

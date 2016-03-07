@@ -554,8 +554,12 @@ public class AnnotationProcessor extends AbstractProcessor {
 
             /* instantiate new on update if not null */
             if (p.instantiateNewIfNotNull()) {
-                ServiceResource serviceResource = getServiceResource(p);
-                commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget, true), buildInstanciationIfNotNull(fieldInfoSource, fieldInfoTarget, serviceResource)));
+                commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget, true), buildInstanciationIfNotNull(fieldInfoSource, fieldInfoTarget)));
+            }
+
+            ServiceResource serviceResource = getServiceResource(p);
+            if (serviceResource != null) {
+                commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget, true), loadFromServiceResource(fieldInfoSource, fieldInfoTarget, serviceResource)));
             }
 
             /* null save condition is only required if source has depth > 1 */
@@ -582,7 +586,7 @@ public class AnnotationProcessor extends AbstractProcessor {
     }
 
 
-    private String buildInstanciationIfNotNull(FieldInfo source, FieldInfo target, ServiceResource serviceResource) {
+    private String buildInstanciationIfNotNull(FieldInfo source, FieldInfo target) {
 
         FieldInfo targetField = FieldInfoUtils.getDeepestChild(target);
         if (targetField.getParent() != null) {
@@ -600,22 +604,42 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         String instantiationBlock = buildFullSetter(targetField, buildInstanciation(FieldInfoUtils.getDeepestChild(targetField)));
 
-        //handle resource Service
-        if (serviceResource != null) {
-            String getObjectFromEntityService = serviceResource.getName() + ".get(" + buildFullGetter(source, DepthMode.BASEMENT, MethodType.GET.name()) + ")";
-            String conditionEntityService = getObjectFromEntityService + " != null";
-            instantiationBlock = codeRenderService.renderIfCondition(conditionEntityService, buildFullSetter(targetField, getObjectFromEntityService), instantiationBlock);
-        }
-
-
         StringBuffer sb = new StringBuffer();
         sb.append("/* instantiate if not null */").append("\r\n");
         sb.append(codeRenderService.renderIfCondition(condition.toString(), instantiationBlock));
 
         return sb.toString();
-
-
     }
+
+    private String loadFromServiceResource(FieldInfo source, FieldInfo target, ServiceResource serviceResource) {
+
+        FieldInfo targetField = FieldInfoUtils.getDeepestChild(target);
+        if (targetField.getParent() != null) {
+            targetField = FieldInfoUtils.getRoot(FieldInfoUtils.cloneUp(targetField.getParent()));
+        } else {
+            targetField = FieldInfoUtils.getRoot(targetField);
+        }
+
+        //enclosed condition if property is different target
+        StringBuffer condition = new StringBuffer();
+        condition.append(buildCondition(source, DepthMode.BASEMENT, ComparisonType.NOT_EQUAL, "null", ConditionMode.TARGET));
+        String instantiationBlock = "";
+
+        //handle resource Service
+        if (serviceResource != null) {
+            String getObjectFromEntityService = serviceResource.getName() + ".get(" + buildFullGetter(source, DepthMode.BASEMENT, MethodType.GET.name()) + ")";
+            instantiationBlock = buildFullSetter(targetField, getObjectFromEntityService);
+        }
+
+        StringBuffer sb = new StringBuffer();
+        if (!instantiationBlock.equals("")) {
+            sb.append("/* load from service resource */").append("\r\n");
+            sb.append(codeRenderService.renderIfCondition(condition.toString(), instantiationBlock));
+        }
+
+        return sb.toString();
+    }
+
 
     private String buildTypeConversion(FieldInfo source, FieldInfo target, String getterCommand) {
 
