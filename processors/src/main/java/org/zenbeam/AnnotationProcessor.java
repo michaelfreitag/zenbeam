@@ -160,7 +160,7 @@ public class AnnotationProcessor extends AbstractProcessor {
         }
 
         if (result == null) {
-            printError(String.format("Field [%s] not found in [%]", name, typeMirror.toString()));
+            printError(String.format("Field [%s] not found in [%s]", name, typeMirror.toString()));
         }
 
         return result;
