@@ -1,6 +1,6 @@
 package org.zenbeam.example.entity;
 
-public class BaseExample {
+public class BaseExample extends AbstractBaseExample {
 
     private Long id;
 

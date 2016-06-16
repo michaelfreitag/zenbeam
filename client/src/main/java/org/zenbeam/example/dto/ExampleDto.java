@@ -18,6 +18,8 @@ public class ExampleDto {
 
     private String exampleCId;
 
+    private String exampleCUuid;
+
     public String getExampleAId() {
         return exampleAId;
     }
@@ -72,5 +74,13 @@ public class ExampleDto {
 
     public void setExampleCId(String exampleCId) {
         this.exampleCId = exampleCId;
+    }
+
+    public String getExampleCUuid() {
+        return exampleCUuid;
+    }
+
+    public void setExampleCUuid(String exampleCUuid) {
+        this.exampleCUuid = exampleCUuid;
     }
 }

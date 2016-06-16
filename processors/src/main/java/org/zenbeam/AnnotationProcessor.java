@@ -138,6 +138,24 @@ public class AnnotationProcessor extends AbstractProcessor {
     }
 
 
+    public List<TypeMirror> getAllSuperTypes(TypeMirror type) {
+
+        List<TypeMirror> result = new ArrayList<>();
+
+        try {
+            List<? extends TypeMirror> superTypes = processingEnv.getTypeUtils().directSupertypes(type);
+            while (superTypes != null && !superTypes.isEmpty()) {
+                TypeMirror superClass = superTypes.get(0);
+                result.add(superClass);
+                superTypes = processingEnv.getTypeUtils().directSupertypes(superClass);
+            }
+        } catch (RuntimeException e) {
+            printError("Failed to find all super classes of type '" + type.toString() + ". Possibly missing classes?");
+        }
+
+        return result;
+    }
+
     private VariableElement findField(String name, TypeMirror typeMirror) {
 
         VariableElement result = null;
@@ -145,7 +163,8 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         elements.add(processingEnv.getTypeUtils().asElement(typeMirror));
 
-        for (TypeMirror tm : processingEnv.getTypeUtils().directSupertypes(typeMirror)) {
+        List<TypeMirror> superTypes = getAllSuperTypes(typeMirror);
+        for (TypeMirror tm : superTypes) {
             elements.add(processingEnv.getTypeUtils().asElement(tm));
         }
 
@@ -174,7 +193,8 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         elements.add(processingEnv.getTypeUtils().asElement(owner.asType()));
 
-        for (TypeMirror tm : processingEnv.getTypeUtils().directSupertypes(owner.asType())) {
+        List<TypeMirror> superTypes = getAllSuperTypes(owner.asType());
+        for (TypeMirror tm : superTypes) {
             elements.add(processingEnv.getTypeUtils().asElement(tm));
         }
 
@@ -210,10 +230,10 @@ public class AnnotationProcessor extends AbstractProcessor {
             elements.add(processingEnv.getTypeUtils().asElement(owner.asType()));
         }
 
-        for (TypeMirror tm : processingEnv.getTypeUtils().directSupertypes(owner.asType())) {
+        List<TypeMirror> superTypes = getAllSuperTypes(owner.asType());
+        for (TypeMirror tm : superTypes) {
             elements.add(processingEnv.getTypeUtils().asElement(tm));
         }
-
 
         String methodName = field.getSimpleName().toString();
 
@@ -237,7 +257,7 @@ public class AnnotationProcessor extends AbstractProcessor {
         }
 
         if (result == null) {
-            printError(String.format("No Method [%s] found in [%]", methodName, field.getSimpleName()));
+            printError(String.format("No Method [%s] found in [%s]", methodName, field.getSimpleName()));
         }
 
 
