@@ -38,7 +38,7 @@ public class FieldCommand {
             boolean notActiveProfile = false;
             if (activeProfile != null && activeProfile.startsWith("!")) {
                 activeProfile = activeProfile.replace("!", "");
-                notActiveProfile = false;
+                notActiveProfile = true;
             }
             if (notActiveProfile) {
                 sb.append("if (profile != null && !profile.isEmpty() && !(\"" + activeProfile + "\").equalsIgnoreCase(profile)) { ").append("\r\n");
