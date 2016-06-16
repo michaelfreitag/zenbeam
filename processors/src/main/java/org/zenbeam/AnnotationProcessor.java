@@ -572,15 +572,17 @@ public class AnnotationProcessor extends AbstractProcessor {
             }
 
 
+            /* try to load via service */
+            ServiceResource serviceResource = getServiceResource(p);
+            if (serviceResource != null) {
+                commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget, true), loadFromServiceResource(fieldInfoSource, fieldInfoTarget, serviceResource)));
+            }
+
             /* instantiate new on update if not null */
             if (p.instantiateNewIfNotNull()) {
                 commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget, true), buildInstanciationIfNotNull(fieldInfoSource, fieldInfoTarget)));
             }
 
-            ServiceResource serviceResource = getServiceResource(p);
-            if (serviceResource != null) {
-                commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget, true), loadFromServiceResource(fieldInfoSource, fieldInfoTarget, serviceResource)));
-            }
 
             /* null save condition is only required if source has depth > 1 */
             StringBuffer condition = new StringBuffer();
