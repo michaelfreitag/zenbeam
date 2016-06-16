@@ -78,6 +78,8 @@ public class AnnotationProcessor extends AbstractProcessor {
                         VariableElement source = null;
                         VariableElement target = null;
 
+                        boolean profileEnabled = false;
+
                         for (VariableElement va : ee.getParameters()) {
                             //add type to import
                             imports.add(va.asType().toString());
@@ -94,6 +96,10 @@ public class AnnotationProcessor extends AbstractProcessor {
                                 target = va;
                             }
 
+                            if (va.getSimpleName().toString().equalsIgnoreCase("profile")) {
+                                profileEnabled = true;
+                            }
+
                         }
 
 
@@ -101,7 +107,7 @@ public class AnnotationProcessor extends AbstractProcessor {
                                 ee.getReturnType().toString(),
                                 ee.getSimpleName().toString(),
                                 StringUtils.join(methodAttributes, ", "),
-                                buildProjections(projections, source, target));
+                                buildProjections(projections, source, target, profileEnabled));
 
                         methods.add(method);
 
@@ -487,7 +493,7 @@ public class AnnotationProcessor extends AbstractProcessor {
             nullSaveCondition = buildCondition(fieldInfoWithOutChild, DepthMode.BASEMENT, ComparisonType.EQUAL, "null", ConditionMode.TARGET);
             setter = buildFullSetter(fieldInfoWithOutChild, buildInstanciation(fieldInfo));
 
-            commands.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoWithOutChild), codeRenderService.renderIfCondition(nullSaveCondition, setter)));
+            commands.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoWithOutChild), codeRenderService.renderIfCondition(nullSaveCondition, setter), false, null));
 
             if (fieldInfo.getChild().getChild() != null) {
                 commands.addAll(buildSetterPreparation(fieldInfo.getChild()));
@@ -499,7 +505,7 @@ public class AnnotationProcessor extends AbstractProcessor {
             nullSaveCondition = buildCondition(fieldInfo, DepthMode.BASEMENT, ComparisonType.EQUAL, "null", ConditionMode.TARGET);
             setter = buildSetter(fieldInfo, buildInstanciation(fieldInfo));
 
-            commands.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfo), codeRenderService.renderIfCondition(nullSaveCondition, setter)));
+            commands.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfo), codeRenderService.renderIfCondition(nullSaveCondition, setter), false, null));
 
         }
 
@@ -548,12 +554,13 @@ public class AnnotationProcessor extends AbstractProcessor {
         return result;
     }
 
-    private String buildProjections(Projections projections, VariableElement source, VariableElement target) {
+    private String buildProjections(Projections projections, VariableElement source, VariableElement target, boolean profileEnabled) {
 
         List<FieldCommand> commandBlockList = new ArrayList<FieldCommand>();
 
         //go throw every definition
         for (Projection p : projections.value()) {
+
 
             FieldInfo fieldInfoSource = FieldInfoUtils.getRoot(getFieldInfo(p.source().toLowerCase(), source, null, null));
             FieldInfo fieldInfoTarget = FieldInfoUtils.getRoot(getFieldInfo(p.target().toLowerCase(), target, null, null));
@@ -575,12 +582,12 @@ public class AnnotationProcessor extends AbstractProcessor {
             /* try to load via service */
             ServiceResource serviceResource = getServiceResource(p);
             if (serviceResource != null) {
-                commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget, true), loadFromServiceResource(fieldInfoSource, fieldInfoTarget, serviceResource)));
+                commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget, true), loadFromServiceResource(fieldInfoSource, fieldInfoTarget, serviceResource), profileEnabled, p.profile()));
             }
 
             /* instantiate new on update if not null */
             if (p.instantiateNewIfNotNull()) {
-                commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget, true), buildInstanciationIfNotNull(fieldInfoSource, fieldInfoTarget)));
+                commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget, true), buildInstanciationIfNotNull(fieldInfoSource, fieldInfoTarget), profileEnabled, p.profile()));
             }
 
 
@@ -596,7 +603,7 @@ public class AnnotationProcessor extends AbstractProcessor {
                 command = codeRenderService.renderIfCondition(condition.toString(), command);
             }
 
-            commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget), command));
+            commandBlockList.add(new FieldCommand(FieldInfoUtils.getPath(fieldInfoTarget), command, profileEnabled, p.profile()));
 
         }
 

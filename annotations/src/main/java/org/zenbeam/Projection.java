@@ -15,6 +15,8 @@ public @interface Projection {
 
     boolean instantiateNewIfNotNull() default false;
 
+    String profile() default "default";
+
     Class<? extends ProjectionEntityService> entityService() default ProjectionEntityService.class;
 
 }

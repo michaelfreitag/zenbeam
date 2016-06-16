@@ -26,8 +26,8 @@ public interface Mapper {
      */
 
     @Projections({
-            //@Projection(source = "exampleCId", target = "exampleB.exampleC.id", instantiateNewIfNotNull = true, entityService = EntityService.class),
-            @Projection(source = "exampleCUuid", target = "exampleB.exampleC.uuid"),
+            @Projection(source = "exampleCId", target = "exampleB.exampleC.id", instantiateNewIfNotNull = true, entityService = EntityService.class),
+            @Projection(source = "exampleCUuid", target = "exampleB.exampleC.uuid", profile = "test"),
             /*
             @Projection(source = "exampleAId", target = "id")
             @Projection(source= "exampleAName", target="exampleB.exampleC.exampleAList[0].name")

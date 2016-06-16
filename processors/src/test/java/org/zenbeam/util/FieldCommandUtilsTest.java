@@ -31,11 +31,11 @@ public class FieldCommandUtilsTest {
 
         //given
         List<FieldCommand> commands = new ArrayList<FieldCommand>();
-        FieldCommand fc1 = new FieldCommand("a", "{}");
-        FieldCommand fc2 = new FieldCommand("a.a", "{}");
-        FieldCommand fc3 = new FieldCommand("b", "{}");
-        FieldCommand fc4 = new FieldCommand("a.b.c.d", "{}");
-        FieldCommand fc5 = new FieldCommand("a.b", "{}");
+        FieldCommand fc1 = new FieldCommand("a", "{}", false, null);
+        FieldCommand fc2 = new FieldCommand("a.a", "{}", false, null);
+        FieldCommand fc3 = new FieldCommand("b", "{}", false, null);
+        FieldCommand fc4 = new FieldCommand("a.b.c.d", "{}", false, null);
+        FieldCommand fc5 = new FieldCommand("a.b", "{}", false, null);
 
         commands.add(fc4);
         commands.add(fc3);
@@ -57,10 +57,10 @@ public class FieldCommandUtilsTest {
 
         //given
         List<FieldCommand> commands = new ArrayList<FieldCommand>();
-        FieldCommand fc1 = new FieldCommand("a", "{}");
-        FieldCommand fc2 = new FieldCommand("b", "{}");
-        FieldCommand fc3 = new FieldCommand("a", "{}");
-        FieldCommand fc4 = new FieldCommand("b", "{;}");
+        FieldCommand fc1 = new FieldCommand("a", "{}", false, null);
+        FieldCommand fc2 = new FieldCommand("b", "{}", false, null);
+        FieldCommand fc3 = new FieldCommand("a", "{}", false, null);
+        FieldCommand fc4 = new FieldCommand("b", "{;}", false, null);
 
         commands.add(fc1);
         commands.add(fc2);
