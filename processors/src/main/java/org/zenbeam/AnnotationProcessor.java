@@ -620,6 +620,8 @@ public class AnnotationProcessor extends AbstractProcessor {
 
         //enclosed condition if property is different target
         StringBuffer condition = new StringBuffer();
+        condition.append(buildCondition(target, DepthMode.GROUND_FLOOR, ComparisonType.NOT_EQUAL, "null", ConditionMode.TARGET));
+        condition.append(" && ");
         condition.append(buildCondition(target, DepthMode.BASEMENT, ComparisonType.NOT_EQUAL, "null", ConditionMode.TARGET));
         condition.append(" && ");
         condition.append(buildCondition(target, DepthMode.BASEMENT, ComparisonType.NOT_EQUAL, buildTypeConversion(source, target, buildFullGetter(source, DepthMode.BASEMENT, MethodType.GET.name())), ConditionMode.TARGET));
